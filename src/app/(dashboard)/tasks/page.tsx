@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { useDebounce } from '@/hooks/useDebounce';
 import { TableSkeleton } from '@/components/ui/skeleton';
+import KanbanBoard from '@/components/Kanban/KanbanBoard';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import type { Task } from '@/types/database';
@@ -28,6 +29,7 @@ export default function TasksPage() {
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [assigningTaskId, setAssigningTaskId] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'kanban'>('grid');
 
   const debouncedStatus = useDebounce(statusFilter, 300);
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -242,6 +244,29 @@ export default function TasksPage() {
           placeholder="Search tasks..."
           className="flex-1 min-w-[200px] px-4 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-all duration-200"
         />
+        {/* View Toggle */}
+        <div className="flex items-center border border-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`px-3 py-2 text-sm font-medium transition-colors ${
+              viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setViewMode('kanban')}
+            className={`px-3 py-2 text-sm font-medium transition-colors ${
+              viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Tasks Grid */}
@@ -263,6 +288,12 @@ export default function TasksPage() {
             </Link>
           )}
         </div>
+      ) : viewMode === 'kanban' ? (
+        <KanbanBoard
+          tasks={tasks}
+          onStatusChange={handleStatusUpdate}
+          canEdit={canManageTasks}
+        />
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

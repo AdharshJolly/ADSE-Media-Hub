@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import PushNotificationManager from '@/components/Notifications/PushNotificationManager';
 
 interface Notification {
   notification_id: string;
@@ -127,22 +128,25 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">Notifications</h1>
+          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
           {unreadCount > 0 && (
             <p className="text-sm text-muted-foreground mt-1">{unreadCount} unread notifications</p>
           )}
         </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={markAllAsRead}
-            className="px-4 py-2 text-sm font-semibold text-primary hover:text-primary/80 transition flex items-center gap-2 cursor-pointer self-start md:self-auto"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-            Mark all as read
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <PushNotificationManager />
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllAsRead}
+              className="px-4 py-2 text-sm font-semibold text-primary hover:text-primary/80 transition flex items-center gap-2 cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              Mark all as read
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
