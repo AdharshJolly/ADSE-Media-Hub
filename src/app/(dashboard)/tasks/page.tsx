@@ -7,17 +7,25 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import type { Task, PaginatedResponse } from '@/types/database';
+import type { Task } from '@/types/database';
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+}
 
 export default function TasksPage() {
   const { user, canManageTasks } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [assigningTaskId, setAssigningTaskId] = useState<string | null>(null);
 
   const debouncedStatus = useDebounce(statusFilter, 300);
 
@@ -43,12 +51,25 @@ export default function TasksPage() {
     }
   }, [debouncedStatus, page]);
 
+  const fetchTeamMembers = useCallback(async () => {
+    if (!canManageTasks) return;
+    try {
+      const response = await fetch('/api/users/team-members');
+      const data = await response.json();
+      if (data.success) {
+        setTeamMembers(data.teamMembers);
+      }
+    } catch {
+      console.error('Failed to fetch team members');
+    }
+  }, [canManageTasks]);
+
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
+    fetchTeamMembers();
+  }, [fetchTasks, fetchTeamMembers]);
 
   const handleStatusUpdate = async (taskId: string, newStatus: string) => {
-    // Optimistic update
     setUpdatingTaskId(taskId);
     const originalTasks = [...tasks];
     
@@ -64,18 +85,47 @@ export default function TasksPage() {
       });
       const data = await response.json();
       if (!data.success) {
-        // Rollback on failure
         setTasks(originalTasks);
         toast.error(data.error || 'Failed to update task status');
       } else {
         toast.success('Task status updated');
       }
     } catch {
-      // Rollback on error
       setTasks(originalTasks);
       toast.error('Failed to update task status');
     } finally {
       setUpdatingTaskId(null);
+    }
+  };
+
+  const handleAssign = async (taskId: string, assignedTo: string) => {
+    setAssigningTaskId(taskId);
+    const originalTasks = [...tasks];
+    
+    // Optimistic update
+    const member = teamMembers.find(m => m.id === assignedTo);
+    setTasks(prev => prev.map(t => 
+      t.id === taskId ? { ...t, assigned_to: assignedTo } : t
+    ));
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/assign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedTo }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setTasks(originalTasks);
+        toast.error(data.error || 'Failed to assign task');
+      } else {
+        toast.success(`Task assigned to ${member?.name || 'member'}`);
+      }
+    } catch {
+      setTasks(originalTasks);
+      toast.error('Failed to assign task');
+    } finally {
+      setAssigningTaskId(null);
     }
   };
 
@@ -106,6 +156,11 @@ export default function TasksPage() {
     deadlineDate.setHours(0, 0, 0, 0);
     const diffTime = deadlineDate.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Check if task needs assignment (created by coordinator, assigned to themselves)
+  const needsAssignment = (task: Task) => {
+    return canManageTasks && task.assigned_to === task.created_by && task.status === 'pending';
   };
 
   return (
@@ -157,12 +212,24 @@ export default function TasksPage() {
               tasks.map((task) => {
                 const daysRemaining = getDaysRemaining(task.deadline);
                 const isUpdating = updatingTaskId === task.id;
+                const isAssigning = assigningTaskId === task.id;
+                const unassigned = needsAssignment(task);
                 return (
                   <div
                     key={task.id}
-                    className={`bg-card border border-border rounded-xl p-5 hover:border-border/80 transition-colors duration-200 shadow-sm flex flex-col justify-between ${isUpdating ? 'opacity-60' : ''}`}
+                    className={`bg-card border rounded-xl p-5 transition-colors duration-200 shadow-sm flex flex-col justify-between ${
+                      unassigned ? 'border-yellow-accent/50 bg-yellow-accent/5' : 'border-border hover:border-border/80'
+                    } ${isUpdating || isAssigning ? 'opacity-60' : ''}`}
                   >
                     <div>
+                      {unassigned && (
+                        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-yellow-accent">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          Needs Assignment
+                        </div>
+                      )}
                       <div className="flex justify-between items-start gap-3 mb-3">
                         <h3 className="font-semibold text-foreground line-clamp-2 text-sm leading-tight">
                           {task.title}
@@ -214,8 +281,33 @@ export default function TasksPage() {
                           </span>
                         )}
                       </div>
+
+                      {/* Assignment UI for coordinators */}
+                      {unassigned && (
+                        <div className="mt-3">
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAssign(task.id, e.target.value);
+                                e.target.value = '';
+                              }
+                            }}
+                            disabled={isAssigning}
+                            className="w-full px-3 py-2 bg-background border border-yellow-accent/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-accent focus:border-yellow-accent disabled:opacity-50 cursor-pointer"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>Select team member...</option>
+                            {teamMembers.map((member) => (
+                              <option key={member.id} value={member.id}>
+                                {member.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       
-                      {user?.role === 'team_member' && task.assigned_to === user.user_id && task.status !== 'completed' && (
+                      {/* Action buttons for team members */}
+                      {user?.role === 'team_member' && task.assigned_to === user.user_id && task.status !== 'completed' && !unassigned && (
                         <div className="mt-3 flex space-x-2">
                           {task.status === 'pending' && (
                             <button
