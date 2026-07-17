@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getRequestsPaginated, createRequest, getUserById } from '@/lib/db';
+import { createRequest, getUserById, supabase } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,18 +13,46 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') as 'pending' | 'approved' | 'rejected' | 'completed' | null;
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');
+    const search = searchParams.get('search') || '';
 
     const currentUser = await getUserById(session.userId);
 
+    // Build query
+    let query = supabase
+      .from('requests')
+      .select('*, tasks!tasks_request_id_fkey(id, status, assigned_to, title)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1);
+
     // Requestors can only see their own requests
-    const filters = {
-      status: status || undefined,
-      requestor_id: currentUser?.role === 'requestor' ? session.userId : undefined,
-    };
+    if (currentUser?.role === 'requestor') {
+      query = query.eq('requestor_id', session.userId);
+    }
 
-    const result = await getRequestsPaginated(page, pageSize, filters);
+    if (status) {
+      query = query.eq('status', status);
+    }
 
-    return NextResponse.json({ success: true, ...result }, {
+    // Search filter
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,event_name.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Get requests error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to fetch requests' }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      data: data || [],
+      count: count || 0,
+      page,
+      pageSize,
+      totalPages: Math.ceil((count || 0) / pageSize),
+    }, {
       headers: {
         'Cache-Control': 'private, max-age=5, stale-while-revalidate=15',
       },

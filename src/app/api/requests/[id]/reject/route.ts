@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { updateRequest, getUserById } from '@/lib/db';
+import { updateRequest, getUserById, getRequestById, createNotification } from '@/lib/db';
+import { sendRequestRejectedEmail } from '@/lib/email';
 
 export async function POST(
   request: NextRequest,
@@ -22,6 +23,12 @@ export async function POST(
     const body = await request.json();
     const { notes } = body;
 
+    // Get the request details
+    const requestData = await getRequestById(requestId);
+    if (!requestData) {
+      return NextResponse.json({ success: false, error: 'Request not found' }, { status: 404 });
+    }
+
     const success = await updateRequest(requestId, {
       status: 'rejected',
       coordinator_notes: notes || '',
@@ -29,6 +36,22 @@ export async function POST(
 
     if (!success) {
       return NextResponse.json({ success: false, error: 'Failed to reject request' }, { status: 500 });
+    }
+
+    // Notify requestor
+    await createNotification({
+      recipient_id: requestData.requestor_id,
+      type: 'request_rejected',
+      title: 'Request Rejected',
+      message: `Your request "${requestData.title}" has been rejected. ${notes ? `Reason: ${notes}` : ''}`,
+      related_task_id: null,
+      is_read: false,
+    });
+
+    // Send email to requestor
+    const requestor = await getUserById(requestData.requestor_id);
+    if (requestor) {
+      sendRequestRejectedEmail(requestor.email, requestor.name, requestData.title, notes).catch(console.error);
     }
 
     return NextResponse.json({ success: true, message: 'Request rejected' });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { updateRequest, getUserById, getRequestById, createTask } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { updateRequest, getUserById, getRequestById, createTask, createNotification } from '@/lib/db';
+import { sendRequestApprovedEmail } from '@/lib/email';
 
 export async function POST(
   request: NextRequest,
@@ -21,7 +21,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { notes, assignedTo } = body;
+    const { notes } = body;
 
     // Get the request details
     const requestData = await getRequestById(requestId);
@@ -40,36 +40,41 @@ export async function POST(
     }
 
     // Auto-create a task from the request
-    // If assignedTo is provided, assign directly; otherwise create unassigned
     const task = await createTask({
       request_id: requestId,
       created_by: session.userId,
-      assigned_to: assignedTo || session.userId, // Temporary: assign to self if no one specified
+      assigned_to: session.userId, // Temporary: assign to self until coordinator assigns someone
       title: requestData.title,
       description: requestData.description,
       media_type: requestData.media_type,
       priority: requestData.priority,
       deadline: requestData.deadline,
-      status: assignedTo ? 'pending' : 'pending', // pending until assigned
+      status: 'pending',
       completion_date: null,
       notes: `Auto-created from request. ${notes || ''}`,
     });
 
-    if (!task) {
-      console.error('Failed to auto-create task from request');
-      // Request was still approved, just task creation failed
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Request approved but failed to create task',
-        taskCreated: false 
-      });
+    // Notify requestor
+    await createNotification({
+      recipient_id: requestData.requestor_id,
+      type: 'request_approved',
+      title: 'Request Approved',
+      message: `Your request "${requestData.title}" has been approved and a task has been created.`,
+      related_task_id: task?.id || null,
+      is_read: false,
+    });
+
+    // Send email to requestor
+    const requestor = await getUserById(requestData.requestor_id);
+    if (requestor) {
+      sendRequestApprovedEmail(requestor.email, requestor.name, requestData.title).catch(console.error);
     }
 
     return NextResponse.json({ 
       success: true, 
       message: 'Request approved and task created',
-      taskId: task.id,
-      taskCreated: true 
+      taskId: task?.id,
+      taskCreated: !!task
     });
   } catch (error) {
     console.error('Approve request error:', error);

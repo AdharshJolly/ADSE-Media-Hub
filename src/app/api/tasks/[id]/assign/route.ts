@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getTaskById, updateTask, getUserById } from '@/lib/db';
+import { getTaskById, updateTask, getUserById, createNotification } from '@/lib/db';
+import { sendTaskAssignedEmail } from '@/lib/email';
 
 export async function PATCH(
   request: NextRequest,
@@ -26,7 +27,13 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'assignedTo is required' }, { status: 400 });
     }
 
-    // Verify the assignee exists and is a team member
+    // Get task details
+    const task = await getTaskById(taskId);
+    if (!task) {
+      return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
+    }
+
+    // Verify the assignee exists
     const assignee = await getUserById(assignedTo);
     if (!assignee) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
@@ -36,6 +43,26 @@ export async function PATCH(
     if (!success) {
       return NextResponse.json({ success: false, error: 'Failed to assign task' }, { status: 500 });
     }
+
+    // Notify assigned team member
+    await createNotification({
+      recipient_id: assignedTo,
+      type: 'task_assigned',
+      title: 'Task Assigned',
+      message: `You have been assigned a new task: "${task.title}". Deadline: ${new Date(task.deadline).toLocaleDateString()}`,
+      related_task_id: taskId,
+      is_read: false,
+    });
+
+    // Send email to assigned member
+    sendTaskAssignedEmail(
+      assignee.email,
+      assignee.name,
+      task.title,
+      task.description,
+      task.deadline,
+      task.priority
+    ).catch(console.error);
 
     return NextResponse.json({ success: true, message: 'Task assigned successfully' });
   } catch (error) {

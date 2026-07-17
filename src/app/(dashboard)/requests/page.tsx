@@ -7,25 +7,45 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import type { Request, PaginatedResponse } from '@/types/database';
+
+interface RequestWithTask {
+  id: string;
+  requestor_id: string;
+  title: string;
+  description: string;
+  media_type: string;
+  event_name: string;
+  target_platform: string;
+  style_reference: string;
+  deadline: string;
+  priority: string;
+  status: string;
+  coordinator_notes: string;
+  created_at: string;
+  updated_at: string;
+  tasks: Array<{ id: string; status: string; assigned_to: string; title: string }> | null;
+}
 
 export default function RequestsPage() {
   const { canManageTasks, isRequestor } = useAuth();
-  const [requests, setRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<RequestWithTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const debouncedStatus = useDebounce(statusFilter, 300);
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   const fetchRequests = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (debouncedStatus) params.set('status', debouncedStatus);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       params.set('page', page.toString());
       params.set('pageSize', '10');
 
@@ -41,7 +61,7 @@ export default function RequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedStatus, page]);
+  }, [debouncedStatus, debouncedSearch, page]);
 
   useEffect(() => {
     fetchRequests();
@@ -51,9 +71,8 @@ export default function RequestsPage() {
     setUpdatingId(requestId);
     const originalRequests = [...requests];
     
-    // Optimistic update
     setRequests(prev => prev.map(r => 
-      r.id === requestId ? { ...r, status: 'approved' as const } : r
+      r.id === requestId ? { ...r, status: 'approved' } : r
     ));
 
     try {
@@ -67,7 +86,8 @@ export default function RequestsPage() {
         setRequests(originalRequests);
         toast.error(data.error || 'Failed to approve request');
       } else {
-        toast.success('Request approved');
+        toast.success('Request approved and task created');
+        fetchRequests(); // Refresh to show linked task
       }
     } catch {
       setRequests(originalRequests);
@@ -84,9 +104,8 @@ export default function RequestsPage() {
     setUpdatingId(requestId);
     const originalRequests = [...requests];
     
-    // Optimistic update
     setRequests(prev => prev.map(r => 
-      r.id === requestId ? { ...r, status: 'rejected' as const } : r
+      r.id === requestId ? { ...r, status: 'rejected' } : r
     ));
 
     try {
@@ -139,6 +158,28 @@ export default function RequestsPage() {
     return styles[mediaType] || 'bg-violet-500/10 text-violet-500 border border-violet-500/20';
   };
 
+  const getLinkedTaskBadge = (req: RequestWithTask) => {
+    if (!req.tasks || req.tasks.length === 0) return null;
+    const task = req.tasks[0];
+    const statusColors: Record<string, string> = {
+      pending: 'bg-amber-500/10 text-amber-500',
+      in_progress: 'bg-primary/10 text-primary',
+      completed: 'bg-emerald-500/10 text-emerald-500',
+      overdue: 'bg-red-500/10 text-red-500',
+    };
+    return (
+      <Link
+        href={`/tasks?highlight=${task.id}`}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusColors[task.status] || 'bg-muted text-muted-foreground'} hover:opacity-80 transition-opacity`}
+      >
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        Task: {task.status.replace('_', ' ')}
+      </Link>
+    );
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
       {/* Header */}
@@ -159,7 +200,7 @@ export default function RequestsPage() {
 
       {/* Filters Card */}
       <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="w-full sm:w-64">
             <label className="block text-xs font-medium text-muted-foreground mb-2">Filter by Status</label>
             <select
@@ -173,6 +214,16 @@ export default function RequestsPage() {
               <option value="rejected">Rejected</option>
               <option value="completed">Completed</option>
             </select>
+          </div>
+          <div className="flex-1 w-full sm:w-auto">
+            <label className="block text-xs font-medium text-muted-foreground mb-2">Search</label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+              placeholder="Search requests..."
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+            />
           </div>
         </div>
       </div>
@@ -199,7 +250,7 @@ export default function RequestsPage() {
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                       <p className="font-medium text-sm">No requests found</p>
-                      <p className="text-xs mt-1">Try changing the status filter or create a new request.</p>
+                      <p className="text-xs mt-1">Try changing the filter or create a new request.</p>
                     </td>
                   </tr>
                 ) : (
@@ -217,6 +268,7 @@ export default function RequestsPage() {
                           ) : (
                             <div className="text-xs text-muted-foreground/60 mt-0.5">No event linked</div>
                           )}
+                          {getLinkedTaskBadge(req)}
                         </td>
                         <td className="px-5 py-4">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getMediaTypeBadgeStyles(req.media_type)}`}>

@@ -86,6 +86,50 @@ export async function sendAccountApprovedEmail(
   });
 }
 
+export async function sendRequestApprovedEmail(
+  userEmail: string,
+  userName: string,
+  requestTitle: string,
+): Promise<boolean> {
+  return sendEmail({
+    to: userEmail,
+    subject: `Request Approved - ${requestTitle}`,
+    html: `
+      <h2>Request Approved</h2>
+      <p>Hi ${userName},</p>
+      <p>Your media request has been approved and a task has been created:</p>
+      <ul>
+        <li><strong>Request:</strong> ${requestTitle}</li>
+      </ul>
+      <p>A coordinator will assign this task to a team member shortly.</p>
+      <a href="${APP_URL}/requests" style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:5px;">View Requests</a>
+    `,
+  });
+}
+
+export async function sendRequestRejectedEmail(
+  userEmail: string,
+  userName: string,
+  requestTitle: string,
+  reason?: string,
+): Promise<boolean> {
+  return sendEmail({
+    to: userEmail,
+    subject: `Request Rejected - ${requestTitle}`,
+    html: `
+      <h2>Request Rejected</h2>
+      <p>Hi ${userName},</p>
+      <p>Your media request has been rejected:</p>
+      <ul>
+        <li><strong>Request:</strong> ${requestTitle}</li>
+        ${reason ? `<li><strong>Reason:</strong> ${reason}</li>` : ''}
+      </ul>
+      <p>Please contact a coordinator if you have questions.</p>
+      <a href="${APP_URL}/requests" style="display:inline-block;padding:10px 20px;background:#dc2626;color:white;text-decoration:none;border-radius:5px;">View Requests</a>
+    `,
+  });
+}
+
 export async function sendTaskAssignedEmail(
   teamMemberEmail: string,
   teamMemberName: string,

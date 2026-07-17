@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, memo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { StatCardSkeleton, ListSkeleton } from '@/components/ui/skeleton';
+import { TaskStatusChart, RequestStatusChart } from '@/components/ui/charts';
 import type { DashboardStats, Workload } from '@/types/database';
 
 // Memoized stat card component
@@ -192,6 +193,21 @@ export default function DashboardPage() {
                 </svg>
               }
             />
+          </>
+        )}
+
+        {/* Charts Section */}
+        {canManageTasks && stats && (
+          <>
+            <div className="col-span-1 md:col-span-2 lg:col-span-2 bg-card border border-border rounded-xl p-5">
+              <h2 className="text-base font-semibold text-foreground mb-4">Task Status Overview</h2>
+              <TaskStatusChart stats={stats.taskStats} />
+            </div>
+
+            <div className="col-span-1 md:col-span-2 lg:col-span-2 bg-card border border-border rounded-xl p-5">
+              <h2 className="text-base font-semibold text-foreground mb-4">Request Status</h2>
+              <RequestStatusChart stats={stats.requestStats} />
+            </div>
           </>
         )}
 
