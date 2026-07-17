@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getTaskById, getUserById, supabase } from '@/lib/db';
+import { getTaskById, getUserById } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(
   request: NextRequest,
