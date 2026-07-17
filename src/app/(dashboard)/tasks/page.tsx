@@ -63,22 +63,22 @@ export default function TasksPage() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      pending: 'bg-gray-100 text-gray-800',
-      in_progress: 'bg-blue-100 text-blue-800',
-      completed: 'bg-green-100 text-green-800',
-      overdue: 'bg-red-100 text-red-800',
+      pending: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
+      in_progress: 'bg-primary/10 text-primary border border-primary/20',
+      completed: 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20',
+      overdue: 'bg-red-500/10 text-red-500 border border-red-500/20',
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-muted text-muted-foreground border border-border';
   };
 
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
-      low: 'bg-gray-100 text-gray-600',
-      medium: 'bg-yellow-100 text-yellow-700',
-      high: 'bg-orange-100 text-orange-700',
-      urgent: 'bg-red-100 text-red-700',
+      low: 'bg-muted/50 text-muted-foreground border border-border/50',
+      medium: 'bg-blue-500/10 text-blue-500 border border-blue-500/20',
+      high: 'bg-orange-500/10 text-orange-500 border border-orange-500/20',
+      urgent: 'bg-rose-500/10 text-rose-500 border border-rose-500/20',
     };
-    return colors[priority] || 'bg-gray-100 text-gray-600';
+    return colors[priority] || 'bg-muted/50 text-muted-foreground border border-border/50';
   };
 
   const getDaysRemaining = (deadline: string) => {
@@ -93,7 +93,7 @@ export default function TasksPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-yellow-accent border-t-transparent"></div>
       </div>
     );
   }
@@ -101,13 +101,13 @@ export default function TasksPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Tasks</h1>
+        <h1 className="text-3xl font-bold text-foreground tracking-tight">Tasks</h1>
         {canManageTasks && (
           <Link
             href="/tasks/new"
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-semibold bg-yellow-accent text-primary-foreground hover:opacity-90 transition shadow-md shadow-yellow-accent/15 focus:outline-none focus:ring-2 focus:ring-yellow-outline"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             <span>New Task</span>
@@ -116,11 +116,11 @@ export default function TasksPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-md p-4 flex flex-wrap gap-4">
+      <div className="bg-card border border-border rounded-2xl p-4 flex flex-wrap gap-4 shadow-sm">
         <select
           value={filter.status}
           onChange={(e) => setFilter({ ...filter, status: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 bg-background border border-border rounded-xl text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-yellow-outline focus:border-yellow-accent transition-all duration-200"
         >
           <option value="">All Status</option>
           <option value="pending">Pending</option>
@@ -133,8 +133,8 @@ export default function TasksPage() {
       {/* Tasks Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {tasks.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <p className="text-gray-500">No tasks found</p>
+          <div className="col-span-full text-center py-12 bg-card border border-border rounded-2xl shadow-sm">
+            <p className="text-muted-foreground text-sm">No tasks found</p>
           </div>
         ) : (
           tasks.map((task) => {
@@ -142,75 +142,83 @@ export default function TasksPage() {
             return (
               <div
                 key={task.task_id}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition"
+                className="bg-card border border-border rounded-2xl p-6 hover:border-yellow-accent/40 hover:scale-[1.01] transition duration-300 shadow-sm flex flex-col justify-between group"
               >
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-semibold text-gray-800 line-clamp-2">{task.title}</h3>
-                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(task.status)}`}>
-                    {task.status?.replace('_', ' ')}
-                  </span>
-                </div>
-                
-                <p className="text-sm text-gray-500 mb-4 line-clamp-2">{task.description}</p>
-                
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <span className={`px-2 py-1 text-xs rounded-full ${getPriorityColor(task.priority)}`}>
-                    {task.priority}
-                  </span>
-                  {task.media_type && (
-                    <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
-                      {task.media_type?.replace('_', ' ')}
+                <div>
+                  <div className="flex justify-between items-start gap-4 mb-3">
+                    <h3 className="font-semibold text-foreground line-clamp-2 text-base leading-tight group-hover:text-primary transition duration-300">
+                      {task.title}
+                    </h3>
+                    <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full flex-shrink-0 ${getStatusColor(task.status)}`}>
+                      {task.status?.replace('_', ' ')}
                     </span>
-                  )}
-                </div>
-                
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center text-gray-500">
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    {format(new Date(task.deadline), 'MMM d, yyyy')}
                   </div>
-                  {task.status !== 'completed' && (
-                    <span
-                      className={`text-xs font-medium ${
-                        daysRemaining < 0
-                          ? 'text-red-600'
-                          : daysRemaining <= 3
-                          ? 'text-orange-600'
-                          : 'text-gray-500'
-                      }`}
-                    >
-                      {daysRemaining < 0
-                        ? `${Math.abs(daysRemaining)} days overdue`
-                        : daysRemaining === 0
-                        ? 'Due today'
-                        : `${daysRemaining} days left`}
+                  
+                  <p className="text-sm text-muted-foreground mb-4 line-clamp-3 leading-relaxed">
+                    {task.description}
+                  </p>
+                  
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${getPriorityColor(task.priority)}`}>
+                      {task.priority}
                     </span>
-                  )}
-                </div>
-                
-                {/* Action buttons for team members */}
-                {user?.role === 'team_member' && task.assigned_to === user.user_id && task.status !== 'completed' && (
-                  <div className="mt-4 pt-4 border-t border-gray-100 flex space-x-2">
-                    {task.status === 'pending' && (
-                      <button
-                        onClick={() => handleStatusUpdate(task.task_id, 'in_progress')}
-                        className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 transition"
-                      >
-                        Start Task
-                      </button>
-                    )}
-                    {task.status === 'in_progress' && (
-                      <button
-                        onClick={() => handleStatusUpdate(task.task_id, 'completed')}
-                        className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm hover:bg-green-700 transition"
-                      >
-                        Mark Complete
-                      </button>
+                    {task.media_type && (
+                      <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-purple-500/10 text-purple-500 border border-purple-500/20">
+                        {task.media_type?.replace('_', ' ')}
+                      </span>
                     )}
                   </div>
-                )}
+                </div>
+                
+                <div className="mt-auto pt-4 border-t border-border/50">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center text-muted-foreground">
+                      <svg className="w-4 h-4 mr-1.5 text-muted-foreground/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {format(new Date(task.deadline), 'MMM d, yyyy')}
+                    </div>
+                    {task.status !== 'completed' && (
+                      <span
+                        className={`font-semibold ${
+                          daysRemaining < 0
+                            ? 'text-red-500'
+                            : daysRemaining <= 3
+                            ? 'text-orange-500'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {daysRemaining < 0
+                          ? `${Math.abs(daysRemaining)}d overdue`
+                          : daysRemaining === 0
+                          ? 'Due today'
+                          : `${daysRemaining}d left`}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Action buttons for team members */}
+                  {user?.role === 'team_member' && task.assigned_to === user.user_id && task.status !== 'completed' && (
+                    <div className="mt-4 flex space-x-2">
+                      {task.status === 'pending' && (
+                        <button
+                          onClick={() => handleStatusUpdate(task.task_id, 'in_progress')}
+                          className="flex-1 bg-yellow-accent text-primary-foreground py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-yellow-outline cursor-pointer text-center"
+                        >
+                          Start Task
+                        </button>
+                      )}
+                      {task.status === 'in_progress' && (
+                        <button
+                          onClick={() => handleStatusUpdate(task.task_id, 'completed')}
+                          className="flex-1 bg-green-600 text-white py-2 rounded-xl text-xs font-semibold hover:bg-green-700 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/20 cursor-pointer text-center"
+                        >
+                          Mark Complete
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })
