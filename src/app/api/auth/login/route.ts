@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findRowByColumn } from '@/lib/google-sheets';
 import { verifyPassword, generateToken, setSession } from '@/lib/auth';
-import { SHEETS } from '@/lib/google-sheets';
+import { getUserByEmail } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,47 +11,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email and password required' }, { status: 400 });
     }
 
-    // Find user by email
-    const userData = await findRowByColumn(SHEETS.USERS, 1, email);
-    if (!userData) {
+    const user = await getUserByEmail(email);
+    if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const user = {
-      user_id: userData.row[0],
-      email: userData.row[1],
-      name: userData.row[3],
-      role: userData.row[4],
-      skills: userData.row[5],
-      is_active: userData.row[6] === 'TRUE' || userData.row[6] === 'true',
-      is_approved: userData.row[7] === 'TRUE' || userData.row[7] === 'true',
-    };
-
-    // Check if user is approved
     if (!user.is_approved) {
       return NextResponse.json({ success: false, error: 'Account pending approval' }, { status: 403 });
     }
 
-    // Check if user is active
     if (!user.is_active) {
       return NextResponse.json({ success: false, error: 'Account is deactivated' }, { status: 403 });
     }
 
-    // Verify password
-    const isValidPassword = await verifyPassword(password, userData.row[2]);
+    const isValidPassword = await verifyPassword(password, user.password_hash!);
     if (!isValidPassword) {
       return NextResponse.json({ success: false, error: 'Invalid password' }, { status: 401 });
     }
 
-    // Generate token
-    const token = generateToken(user.user_id);
-
-    // Set session cookie
+    const token = generateToken(user.id);
     await setSession(token);
 
     return NextResponse.json({
       success: true,
-      user,
+      user: {
+        user_id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        skills: user.skills,
+        is_active: user.is_active,
+        is_approved: user.is_approved,
+      },
       token,
     });
   } catch (error) {

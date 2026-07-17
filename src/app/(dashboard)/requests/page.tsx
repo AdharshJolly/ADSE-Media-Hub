@@ -3,48 +3,59 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { useDebounce } from '@/hooks/useDebounce';
+import { TableSkeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-
-interface Request {
-  request_id: string;
-  title: string;
-  description: string;
-  media_type: string;
-  priority: string;
-  deadline: string;
-  status: string;
-  event_name: string;
-}
+import type { Request, PaginatedResponse } from '@/types/database';
 
 export default function RequestsPage() {
   const { canManageTasks, isRequestor } = useAuth();
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const debouncedStatus = useDebounce(statusFilter, 300);
 
   const fetchRequests = useCallback(async () => {
     try {
+      setLoading(true);
       const params = new URLSearchParams();
-      if (filter) params.set('status', filter);
-      
+      if (debouncedStatus) params.set('status', debouncedStatus);
+      params.set('page', page.toString());
+      params.set('pageSize', '10');
+
       const response = await fetch(`/api/requests?${params}`);
       const data = await response.json();
       if (data.success) {
-        setRequests(data.requests);
+        setRequests(data.data);
+        setTotalPages(data.totalPages);
+        setTotalCount(data.count);
       }
     } catch {
       toast.error('Failed to fetch requests');
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [debouncedStatus, page]);
 
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
 
   const handleApprove = async (requestId: string) => {
+    setUpdatingId(requestId);
+    const originalRequests = [...requests];
+    
+    // Optimistic update
+    setRequests(prev => prev.map(r => 
+      r.id === requestId ? { ...r, status: 'approved' as const } : r
+    ));
+
     try {
       const response = await fetch(`/api/requests/${requestId}/approve`, {
         method: 'POST',
@@ -52,18 +63,31 @@ export default function RequestsPage() {
         body: JSON.stringify({ notes: 'Approved' }),
       });
       const data = await response.json();
-      if (data.success) {
+      if (!data.success) {
+        setRequests(originalRequests);
+        toast.error(data.error || 'Failed to approve request');
+      } else {
         toast.success('Request approved');
-        fetchRequests();
       }
     } catch {
+      setRequests(originalRequests);
       toast.error('Failed to approve request');
+    } finally {
+      setUpdatingId(null);
     }
   };
 
   const handleReject = async (requestId: string) => {
     const notes = prompt('Reason for rejection:');
     if (notes === null) return;
+
+    setUpdatingId(requestId);
+    const originalRequests = [...requests];
+    
+    // Optimistic update
+    setRequests(prev => prev.map(r => 
+      r.id === requestId ? { ...r, status: 'rejected' as const } : r
+    ));
 
     try {
       const response = await fetch(`/api/requests/${requestId}/reject`, {
@@ -72,12 +96,17 @@ export default function RequestsPage() {
         body: JSON.stringify({ notes }),
       });
       const data = await response.json();
-      if (data.success) {
+      if (!data.success) {
+        setRequests(originalRequests);
+        toast.error(data.error || 'Failed to reject request');
+      } else {
         toast.success('Request rejected');
-        fetchRequests();
       }
     } catch {
+      setRequests(originalRequests);
       toast.error('Failed to reject request');
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -110,26 +139,18 @@ export default function RequestsPage() {
     return styles[mediaType] || 'bg-violet-500/10 text-violet-500 border border-violet-500/20';
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-yellow-accent border-t-transparent"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Media Requests</h1>
-          <p className="text-sm text-muted-foreground mt-1">Submit, monitor, and manage your asset requests.</p>
+          <h1 className="text-2xl font-bold text-foreground">Media Requests</h1>
+          <p className="text-sm text-muted-foreground mt-1">Submit, monitor, and manage your asset requests. ({totalCount} total)</p>
         </div>
         {isRequestor && (
           <Link
             href="/requests/new"
-            className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-sm font-semibold bg-yellow-accent text-primary-foreground hover:opacity-90 transition-all shadow-lg shadow-yellow-accent/15 focus:outline-none focus:ring-2 focus:ring-yellow-outline"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors duration-200"
           >
             New Request
           </Link>
@@ -137,14 +158,14 @@ export default function RequestsPage() {
       </div>
 
       {/* Filters Card */}
-      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+      <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="w-full sm:w-64">
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Filter by Status</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-2">Filter by Status</label>
             <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="w-full px-3.5 py-2 bg-background border border-border rounded-xl text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-yellow-outline focus:border-yellow-accent transition"
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
             >
               <option value="">All Statuses</option>
               <option value="pending">Pending</option>
@@ -153,101 +174,124 @@ export default function RequestsPage() {
               <option value="completed">Completed</option>
             </select>
           </div>
-          <div className="text-xs text-muted-foreground">
-            Showing {requests.length} request{requests.length === 1 ? '' : 's'}
-          </div>
         </div>
       </div>
 
-      {/* Requests Table Soft Card */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Title / Event</th>
-                <th className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
-                <th className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority</th>
-                <th className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Deadline</th>
-                <th className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {requests.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-16 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center space-y-2">
-                      <svg className="w-8 h-8 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                      </svg>
-                      <p className="font-medium text-sm">No requests found</p>
-                      <p className="text-xs">Try changing the status filter or create a new request.</p>
-                    </div>
-                  </td>
+      {/* Requests Table */}
+      {loading ? (
+        <TableSkeleton rows={5} cols={6} />
+      ) : (
+        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[800px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Title / Event</th>
+                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
+                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
+                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Deadline</th>
+                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                 </tr>
-              ) : (
-                requests.map((req) => (
-                  <tr key={req.request_id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-foreground text-sm line-clamp-1">{req.title}</div>
-                      {req.event_name ? (
-                        <div className="text-xs text-muted-foreground mt-0.5 font-medium flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-accent inline-block"></span>
-                          {req.event_name}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground/60 mt-0.5 italic">No event linked</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wider ${getMediaTypeBadgeStyles(req.media_type)}`}>
-                        {req.media_type?.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wider ${getPriorityBadgeStyles(req.priority)}`}>
-                        {req.priority}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-foreground/80 font-medium">
-                      {format(new Date(req.deadline), 'MMM d, yyyy')}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wider ${getStatusBadgeStyles(req.status)}`}>
-                        {req.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-flex space-x-2">
-                        {canManageTasks && req.status === 'pending' ? (
-                          <>
-                            <button
-                              onClick={() => handleApprove(req.request_id)}
-                              className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 transition cursor-pointer"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleReject(req.request_id)}
-                              className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 transition cursor-pointer"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60 italic">—</span>
-                        )}
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {requests.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                      <p className="font-medium text-sm">No requests found</p>
+                      <p className="text-xs mt-1">Try changing the status filter or create a new request.</p>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  requests.map((req) => {
+                    const isUpdating = updatingId === req.id;
+                    return (
+                      <tr key={req.id} className={`hover:bg-muted/20 transition-colors ${isUpdating ? 'opacity-60' : ''}`}>
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-foreground text-sm line-clamp-1">{req.title}</div>
+                          {req.event_name ? (
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-yellow-accent inline-block"></span>
+                              {req.event_name}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground/60 mt-0.5">No event linked</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getMediaTypeBadgeStyles(req.media_type)}`}>
+                            {req.media_type?.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getPriorityBadgeStyles(req.priority)}`}>
+                            {req.priority}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-foreground/80 font-medium">
+                          {format(new Date(req.deadline), 'MMM d, yyyy')}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getStatusBadgeStyles(req.status)}`}>
+                            {req.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="inline-flex space-x-2">
+                            {canManageTasks && req.status === 'pending' ? (
+                              <>
+                                <button
+                                  onClick={() => handleApprove(req.id)}
+                                  disabled={isUpdating}
+                                  className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 transition cursor-pointer disabled:opacity-50"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleReject(req.id)}
+                                  disabled={isUpdating}
+                                  className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 transition cursor-pointer disabled:opacity-50"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/60">—</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center space-x-2 py-4 border-t border-border">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
-

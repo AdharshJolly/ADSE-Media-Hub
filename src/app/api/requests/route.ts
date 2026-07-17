@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, appendRow, generateId, getCurrentUser } from '@/lib/google-sheets';
-import { SHEETS } from '@/lib/google-sheets';
+import { getRequestsPaginated, createRequest, getUserById } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,42 +10,21 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
+    const status = searchParams.get('status') as 'pending' | 'approved' | 'rejected' | 'completed' | null;
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '20');
 
-    const currentUser = await getCurrentUser(session.userId);
-    const userRole = currentUser?.[4];
+    const currentUser = await getUserById(session.userId);
 
-    let requests = await getSheetData(SHEETS.REQUESTS);
-    requests = requests.slice(1);
+    // Requestors can only see their own requests
+    const filters = {
+      status: status || undefined,
+      requestor_id: currentUser?.role === 'requestor' ? session.userId : undefined,
+    };
 
-    // Filter based on role
-    if (userRole === 'requestor') {
-      requests = requests.filter((row) => row[1] === session.userId);
-    }
+    const result = await getRequestsPaginated(page, pageSize, filters);
 
-    // Apply status filter
-    if (status) {
-      requests = requests.filter((row) => row[10] === status);
-    }
-
-    const requestsData = requests.map((row) => ({
-      request_id: row[0],
-      requestor_id: row[1],
-      title: row[2],
-      description: row[3],
-      media_type: row[4],
-      event_name: row[5],
-      target_platform: row[6],
-      style_reference: row[7],
-      deadline: row[8],
-      priority: row[9],
-      status: row[10],
-      coordinator_notes: row[11],
-      created_at: row[12],
-      updated_at: row[13],
-    }));
-
-    return NextResponse.json({ success: true, requests: requestsData }, {
+    return NextResponse.json({ success: true, ...result }, {
       headers: {
         'Cache-Control': 'private, max-age=5, stale-while-revalidate=15',
       },
@@ -71,27 +49,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    const requestId = generateId('REQ');
-    const now = new Date().toISOString();
-
-    await appendRow(SHEETS.REQUESTS, [
-      requestId,
-      session.userId,
+    const newRequest = await createRequest({
+      requestor_id: session.userId,
       title,
       description,
-      mediaType,
-      eventName || '',
-      targetPlatform || '',
-      styleReference || '',
+      media_type: mediaType,
+      event_name: eventName || '',
+      target_platform: targetPlatform || '',
+      style_reference: styleReference || '',
       deadline,
-      priority || 'medium',
-      'pending',
-      '',
-      now,
-      now,
-    ]);
+      priority: priority || 'medium',
+      status: 'pending',
+      coordinator_notes: '',
+    });
 
-    return NextResponse.json({ success: true, requestId, message: 'Request created successfully' });
+    if (!newRequest) {
+      return NextResponse.json({ success: false, error: 'Failed to create request' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, requestId: newRequest.id, message: 'Request created successfully' });
   } catch (error) {
     console.error('Create request error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create request' }, { status: 500 });

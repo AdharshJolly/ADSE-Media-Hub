@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, appendRow, generateId, invalidateCache, getCurrentUser } from '@/lib/google-sheets';
+import { getTasksPaginated, createTask, getUserById, getTeamMembers } from '@/lib/db';
 import { sendTaskAssignedEmail } from '@/lib/email';
-import { SHEETS } from '@/lib/google-sheets';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,50 +11,22 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
+    const status = searchParams.get('status') as 'pending' | 'in_progress' | 'completed' | 'overdue' | 'active' | null;
     const assignedTo = searchParams.get('assignedTo');
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '20');
 
-    const currentUser = await getCurrentUser(session.userId);
-    const userRole = currentUser?.[4];
+    const currentUser = await getUserById(session.userId);
 
-    let tasks = await getSheetData(SHEETS.TASKS);
-    tasks = tasks.slice(1);
+    // Team members can only see their own tasks
+    const filters = {
+      status: status || undefined,
+      assigned_to: currentUser?.role === 'team_member' ? session.userId : (assignedTo || undefined),
+    };
 
-    // Filter based on role
-    if (userRole === 'team_member') {
-      tasks = tasks.filter((row) => row[3] === session.userId);
-    }
+    const result = await getTasksPaginated(page, pageSize, filters);
 
-    // Apply filters
-    if (status) {
-      if (status === 'active') {
-        tasks = tasks.filter((row) => row[9] !== 'completed');
-      } else {
-        tasks = tasks.filter((row) => row[9] === status);
-      }
-    }
-    if (assignedTo) {
-      tasks = tasks.filter((row) => row[3] === assignedTo);
-    }
-
-    const tasksData = tasks.map((row) => ({
-      task_id: row[0],
-      request_id: row[1],
-      created_by: row[2],
-      assigned_to: row[3],
-      title: row[4],
-      description: row[5],
-      media_type: row[6],
-      priority: row[7],
-      deadline: row[8],
-      status: row[9],
-      completion_date: row[10],
-      notes: row[11],
-      created_at: row[12],
-      updated_at: row[13],
-    }));
-
-    return NextResponse.json({ success: true, tasks: tasksData }, {
+    return NextResponse.json({ success: true, ...result }, {
       headers: {
         'Cache-Control': 'private, max-age=5, stale-while-revalidate=15',
       },
@@ -73,8 +44,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    const currentUser = await getCurrentUser(session.userId);
-    if (!currentUser || (currentUser[4] !== 'coordinator' && currentUser[4] !== 'student_head')) {
+    const currentUser = await getUserById(session.userId);
+    if (!currentUser || (currentUser.role !== 'coordinator' && currentUser.role !== 'student_head')) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
     }
 
@@ -85,42 +56,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    const assignedUser = (await getSheetData(SHEETS.USERS)).find((row, index) => index > 0 && row[0] === assignedTo);
+    const assignedUser = await getUserById(assignedTo);
     if (!assignedUser) {
       return NextResponse.json({ success: false, error: 'Assigned user not found' }, { status: 404 });
     }
 
-    const taskId = generateId('TASK');
-    const now = new Date().toISOString();
-
-    await appendRow(SHEETS.TASKS, [
-      taskId,
-      requestId || '',
-      session.userId,
-      assignedTo,
+    const task = await createTask({
+      request_id: requestId || null,
+      created_by: session.userId,
+      assigned_to: assignedTo,
       title,
-      description || '',
-      mediaType || '',
-      priority || 'medium',
+      description: description || '',
+      media_type: mediaType || '',
+      priority: priority || 'medium',
       deadline,
-      'pending',
-      '',
-      notes || '',
-      now,
-      now,
-    ]);
+      status: 'pending',
+      completion_date: null,
+      notes: notes || '',
+    });
 
-    // Send email in background (don't await)
+    if (!task) {
+      return NextResponse.json({ success: false, error: 'Failed to create task' }, { status: 500 });
+    }
+
+    // Send email in background
     sendTaskAssignedEmail(
-      assignedUser[1],
-      assignedUser[3],
+      assignedUser.email,
+      assignedUser.name,
       title,
       description || '',
       deadline,
       priority || 'medium'
     ).catch(console.error);
 
-    return NextResponse.json({ success: true, taskId, message: 'Task created successfully' });
+    return NextResponse.json({ success: true, taskId: task.id, message: 'Task created successfully' });
   } catch (error) {
     console.error('Create task error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create task' }, { status: 500 });

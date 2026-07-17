@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, SHEETS } from '@/lib/google-sheets';
+import { getTeamMembers } from '@/lib/db';
 
 export async function GET() {
   try {
@@ -9,22 +9,7 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    const users = await getSheetData(SHEETS.USERS);
-    
-    const teamMembers = users
-      .slice(1)
-      .filter(
-        (row) =>
-          row[4] === 'team_member' &&
-          (row[6] === 'TRUE' || row[6] === 'true') &&
-          (row[7] === 'TRUE' || row[7] === 'true')
-      )
-      .map((row) => ({
-        user_id: row[0],
-        email: row[1],
-        name: row[3],
-        skills: row[5],
-      }));
+    const teamMembers = await getTeamMembers();
 
     return NextResponse.json({ success: true, teamMembers }, {
       headers: {

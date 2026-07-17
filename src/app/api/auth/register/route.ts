@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSheetData, appendRow, findRowByColumn, generateId } from '@/lib/google-sheets';
 import { hashPassword } from '@/lib/auth';
+import { getUserByEmail, createUser, getAllUsers } from '@/lib/db';
 import { sendRegistrationPendingEmail } from '@/lib/email';
-import { SHEETS } from '@/lib/google-sheets';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,40 +12,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Check if email already exists
-    const existingUser = await findRowByColumn(SHEETS.USERS, 1, email);
+    const existingUser = await getUserByEmail(email);
     if (existingUser) {
       return NextResponse.json({ success: false, error: 'Email already registered' }, { status: 400 });
     }
 
-    // Hash password
     const passwordHash = await hashPassword(password);
 
-    // Generate user ID
-    const userId = generateId('USR');
-
-    // Add user to sheet
-    await appendRow(SHEETS.USERS, [
-      userId,
+    const user = await createUser({
       email,
-      passwordHash,
+      password_hash: passwordHash,
       name,
       role,
-      '', // skills
-      true, // is_active
-      false, // is_approved (pending approval)
-      new Date().toISOString(),
-    ]);
+      skills: '',
+      is_active: true,
+      is_approved: false,
+    });
 
-    // Notify coordinators
-    const users = await getSheetData(SHEETS.USERS);
-    const coordinators = users.filter(
-      (row, index) => index > 0 && (row[4] === 'coordinator' || row[4] === 'student_head') && row[6] === 'TRUE'
-    );
-
-    for (const coordinator of coordinators) {
-      await sendRegistrationPendingEmail(coordinator[1], name, email, role);
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
     }
+
+    // Notify coordinators in background
+    getAllUsers().then(users => {
+      const coordinators = users.filter(
+        u => (u.role === 'coordinator' || u.role === 'student_head') && u.is_active
+      );
+      for (const coordinator of coordinators) {
+        sendRegistrationPendingEmail(coordinator.email, name, email, role).catch(console.error);
+      }
+    });
 
     return NextResponse.json({
       success: true,

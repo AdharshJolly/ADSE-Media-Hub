@@ -3,41 +3,8 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-
-interface Stats {
-  taskStats: {
-    total: number;
-    pending: number;
-    in_progress: number;
-    completed: number;
-    overdue: number;
-  };
-  requestStats: {
-    total: number;
-    pending: number;
-    approved: number;
-    rejected: number;
-    completed: number;
-  };
-  userStats: {
-    total: number;
-    pendingApproval: number;
-    active: number;
-    coordinators: number;
-    studentHeads: number;
-    teamMembers: number;
-    requestors: number;
-  };
-}
-
-interface Workload {
-  user_id: string;
-  name: string;
-  total_tasks: number;
-  in_progress: number;
-  completed: number;
-  overdue: number;
-}
+import { StatCardSkeleton, ListSkeleton } from '@/components/ui/skeleton';
+import type { DashboardStats, Workload } from '@/types/database';
 
 // Memoized stat card component
 const StatCard = memo(function StatCard({
@@ -81,7 +48,7 @@ const StatCard = memo(function StatCard({
 
 export default function DashboardPage() {
   const { user, canManageTasks } = useAuth();
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [workload, setWorkload] = useState<Workload[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -107,8 +74,21 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent"></div>
+      <div className="space-y-8">
+        <div>
+          <div className="h-8 w-64 bg-muted rounded animate-pulse" />
+          <div className="h-4 w-48 bg-muted rounded animate-pulse mt-2" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </div>
+        {canManageTasks && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <ListSkeleton items={3} />
+          </div>
+        )}
       </div>
     );
   }

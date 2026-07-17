@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, updateRow, getCurrentUser, SHEETS } from '@/lib/google-sheets';
+import { getTaskById, updateTaskStatus, getUserById } from '@/lib/db';
 
 export async function PATCH(
   request: NextRequest,
@@ -21,29 +21,20 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Status is required' }, { status: 400 });
     }
 
-    const tasks = await getSheetData(SHEETS.TASKS);
-    const taskIndex = tasks.findIndex((row, index) => index > 0 && row[0] === taskId);
-    
-    if (taskIndex === -1) {
+    const task = await getTaskById(taskId);
+    if (!task) {
       return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
     }
 
-    const taskRow = tasks[taskIndex];
-
-    const currentUser = await getCurrentUser(session.userId);
-    if (currentUser?.[4] === 'team_member' && taskRow[3] !== session.userId) {
+    const currentUser = await getUserById(session.userId);
+    if (currentUser?.role === 'team_member' && task.assigned_to !== session.userId) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
     }
 
-    taskRow[9] = status;
-
-    if (status === 'completed') {
-      taskRow[10] = new Date().toISOString();
+    const success = await updateTaskStatus(taskId, status);
+    if (!success) {
+      return NextResponse.json({ success: false, error: 'Failed to update task' }, { status: 500 });
     }
-
-    taskRow[13] = new Date().toISOString();
-
-    await updateRow(SHEETS.TASKS, taskIndex, taskRow);
 
     return NextResponse.json({ success: true, message: 'Task status updated' });
   } catch (error) {

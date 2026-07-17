@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, updateRow, getCurrentUser, SHEETS } from '@/lib/google-sheets';
+import { updateRequest, getUserById } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
@@ -14,27 +14,22 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    const currentUser = await getCurrentUser(session.userId);
-    if (!currentUser || (currentUser[4] !== 'coordinator' && currentUser[4] !== 'student_head')) {
+    const currentUser = await getUserById(session.userId);
+    if (!currentUser || (currentUser.role !== 'coordinator' && currentUser.role !== 'student_head')) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
-
-    const requests = await getSheetData(SHEETS.REQUESTS);
-    const requestIndex = requests.findIndex((row, index) => index > 0 && row[0] === requestId);
-    
-    if (requestIndex === -1) {
-      return NextResponse.json({ success: false, error: 'Request not found' }, { status: 404 });
     }
 
     const body = await request.json();
     const { notes } = body;
 
-    const requestRow = requests[requestIndex];
-    requestRow[10] = 'rejected';
-    requestRow[11] = notes || '';
-    requestRow[13] = new Date().toISOString();
+    const success = await updateRequest(requestId, {
+      status: 'rejected',
+      coordinator_notes: notes || '',
+    });
 
-    await updateRow(SHEETS.REQUESTS, requestIndex, requestRow);
+    if (!success) {
+      return NextResponse.json({ success: false, error: 'Failed to reject request' }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true, message: 'Request rejected' });
   } catch (error) {

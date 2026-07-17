@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, updateRow, getCurrentUser, SHEETS } from '@/lib/google-sheets';
+import { updateUser, getUserById } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
@@ -14,8 +14,8 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    const currentUser = await getCurrentUser(session.userId);
-    if (!currentUser || (currentUser[4] !== 'coordinator' && currentUser[4] !== 'student_head')) {
+    const currentUser = await getUserById(session.userId);
+    if (!currentUser || (currentUser.role !== 'coordinator' && currentUser.role !== 'student_head')) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
     }
 
@@ -23,15 +23,15 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Cannot deactivate yourself' }, { status: 400 });
     }
 
-    const users = await getSheetData(SHEETS.USERS);
-    const userIndex = users.findIndex((row, index) => index > 0 && row[0] === userId);
-    if (userIndex === -1) {
+    const userToDeactivate = await getUserById(userId);
+    if (!userToDeactivate) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const userRow = users[userIndex];
-    userRow[6] = 'FALSE';
-    await updateRow(SHEETS.USERS, userIndex, userRow);
+    const success = await updateUser(userId, { is_active: false });
+    if (!success) {
+      return NextResponse.json({ success: false, error: 'Failed to deactivate user' }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true, message: 'User deactivated successfully' });
   } catch (error) {
