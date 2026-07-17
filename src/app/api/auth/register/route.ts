@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hashPassword } from '@/lib/auth';
-import { getUserByEmail, createUser, getAllUsers } from '@/lib/db';
-import { sendRegistrationPendingEmail } from '@/lib/email';
+import { getUserByEmail, createUser } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Check if user already exists
     const existingUser = await getUserByEmail(email);
     if (existingUser) {
       return NextResponse.json({ success: false, error: 'Email already registered' }, { status: 400 });
@@ -19,29 +20,29 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(password);
 
-    const user = await createUser({
-      email,
-      password_hash: passwordHash,
-      name,
-      role,
-      skills: '',
-      is_active: true,
-      is_approved: false,
-    });
+    // Insert user directly via Supabase client
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        email,
+        password_hash: passwordHash,
+        name,
+        role,
+        skills: '',
+        is_active: true,
+        is_approved: false,
+      })
+      .select()
+      .single();
 
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
+    if (error) {
+      console.error('Supabase insert error:', error);
+      return NextResponse.json({ success: false, error: error.message || 'Failed to create user' }, { status: 500 });
     }
 
-    // Notify coordinators in background
-    getAllUsers().then(users => {
-      const coordinators = users.filter(
-        u => (u.role === 'coordinator' || u.role === 'student_head') && u.is_active
-      );
-      for (const coordinator of coordinators) {
-        sendRegistrationPendingEmail(coordinator.email, name, email, role).catch(console.error);
-      }
-    });
+    if (!data) {
+      return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,

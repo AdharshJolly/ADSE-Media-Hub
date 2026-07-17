@@ -15,8 +15,21 @@ export async function GET() {
     }
 
     const users = await getAllUsers();
+    
+    // Map to include both id and user_id for backward compatibility
+    const mappedUsers = users.map(u => ({
+      user_id: u.id,
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      skills: u.skills,
+      is_active: u.is_active,
+      is_approved: u.is_approved,
+      created_at: u.created_at,
+    }));
 
-    return NextResponse.json({ success: true, users }, {
+    return NextResponse.json({ success: true, users: mappedUsers }, {
       headers: {
         'Cache-Control': 'private, max-age=15, stale-while-revalidate=60',
       },

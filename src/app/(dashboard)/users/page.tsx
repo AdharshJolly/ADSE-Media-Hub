@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
 interface User {
-  user_id: string;
+  id: string;
   email: string;
   name: string;
   role: string;
@@ -300,7 +300,7 @@ export default function UsersPage() {
                   }
 
                   return (
-                    <tr key={u.user_id} className={`transition duration-150 ${rowClass}`}>
+                    <tr key={u.id} className={`transition duration-150 ${rowClass}`}>
                       <td className="px-6 py-4">
                         <div className="flex items-center">
                           <div className={`w-10 h-10 ${isPending ? 'from-amber-400 to-yellow-500' : 'from-blue-500 to-indigo-600'} bg-gradient-to-br rounded-full flex items-center justify-center shadow-inner`}>
@@ -339,15 +339,15 @@ export default function UsersPage() {
                         <div className="flex space-x-2">
                           {isPending && (
                             <button
-                              onClick={() => handleApprove(u.user_id)}
+                              onClick={() => handleApprove(u.id)}
                               className="bg-primary text-primary-foreground hover:bg-primary/90 hover:border-yellow-outline/50 border border-transparent px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm hover:shadow transition"
                             >
                               Approve
                             </button>
                           )}
-                          {isActive && u.user_id !== user?.user_id && (
+                          {isActive && u.id !== user?.user_id && (
                             <button
-                              onClick={() => handleDeactivate(u.user_id)}
+                              onClick={() => handleDeactivate(u.id)}
                               className="bg-muted text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-border transition"
                             >
                               Deactivate

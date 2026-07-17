@@ -95,3 +95,9 @@ create trigger update_requests_updated_at before update on requests
 
 create trigger update_tasks_updated_at before update on tasks
   for each row execute function update_updated_at_column();
+
+-- Disable RLS for server-side access (we handle auth via JWT in our API)
+alter table users disable row level security;
+alter table requests disable row level security;
+alter table tasks disable row level security;
+alter table notifications disable row level security;
