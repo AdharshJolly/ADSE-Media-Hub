@@ -77,43 +77,6 @@ create index if not exists idx_tasks_deadline on tasks(deadline);
 create index if not exists idx_notifications_recipient_id on notifications(recipient_id);
 create index if not exists idx_notifications_is_read on notifications(is_read);
 
--- RLS policies (Row Level Security)
-alter table users enable row level security;
-alter table requests enable row level security;
-alter table tasks enable row level security;
-alter table notifications enable row level security;
-
--- Users: anyone can read, only auth users can update their own
-create policy "Users can view all users" on users for select using (true);
-create policy "Users can update own profile" on users for update using (auth.uid() = id);
-
--- Requests: requestors can view their own, coordinators can view all
-create policy "Requestors can view own requests" on requests for select using (requestor_id = auth.uid());
-create policy "Coordinators can view all requests" on requests for select using (
-  exists (select 1 from users where id = auth.uid() and role in ('coordinator', 'student_head'))
-);
-create policy "Requestors can create requests" on requests for insert with check (requestor_id = auth.uid());
-create policy "Coordinators can update requests" on requests for update using (
-  exists (select 1 from users where id = auth.uid() and role in ('coordinator', 'student_head'))
-);
-
--- Tasks: team members can view assigned tasks, coordinators can view all
-create policy "Team members can view assigned tasks" on tasks for select using (assigned_to = auth.uid());
-create policy "Coordinators can view all tasks" on tasks for select using (
-  exists (select 1 from users where id = auth.uid() and role in ('coordinator', 'student_head'))
-);
-create policy "Coordinators can create tasks" on tasks for insert with check (
-  exists (select 1 from users where id = auth.uid() and role in ('coordinator', 'student_head'))
-);
-create policy "Team members can update assigned tasks" on tasks for update using (assigned_to = auth.uid());
-create policy "Coordinators can update all tasks" on tasks for update using (
-  exists (select 1 from users where id = auth.uid() and role in ('coordinator', 'student_head'))
-);
-
--- Notifications: users can view their own
-create policy "Users can view own notifications" on notifications for select using (recipient_id = auth.uid());
-create policy "Users can update own notifications" on notifications for update using (recipient_id = auth.uid());
-
 -- Function to update updated_at timestamp
 create or replace function update_updated_at_column()
 returns trigger as $$
