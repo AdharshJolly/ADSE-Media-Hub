@@ -113,3 +113,37 @@ export interface PaginatedResponse<T> {
   pageSize: number;
   totalPages: number;
 }
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  user?: User;
+}
+
+export interface TaskActivity {
+  id: string;
+  task_id: string;
+  user_id: string | null;
+  action: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+  // Joined fields
+  user?: User;
+}
+
+export interface TaskLink {
+  id: string;
+  task_id: string;
+  user_id: string | null;
+  url: string;
+  title: string;
+  description: string;
+  created_at: string;
+  // Joined fields
+  user?: User;
+}

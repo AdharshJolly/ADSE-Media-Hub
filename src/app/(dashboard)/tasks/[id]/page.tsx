@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import TaskComments from '@/components/Tasks/TaskComments';
+import TaskActivity from '@/components/Tasks/TaskActivity';
+import TaskLinks from '@/components/Tasks/TaskLinks';
 
 interface Task {
   id: string;
@@ -236,6 +239,9 @@ export default function TaskDetailPage() {
             </div>
           )}
 
+          {/* Links */}
+          <TaskLinks taskId={taskId} currentUserId={user?.user_id || ''} canManage={canManageTasks} />
+
           {/* Actions */}
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Actions</h2>
@@ -365,8 +371,14 @@ export default function TaskDetailPage() {
               </Link>
             </div>
           )}
+
+          {/* Activity Feed */}
+          <TaskActivity taskId={taskId} />
         </div>
       </div>
+
+      {/* Comments Section (full width below main grid) */}
+      <TaskComments taskId={taskId} currentUserId={user?.user_id || ''} canManage={canManageTasks} />
     </div>
   );
 }

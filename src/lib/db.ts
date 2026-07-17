@@ -405,3 +405,108 @@ export async function getTeamWorkload(): Promise<Workload[]> {
   return Array.from(workloadMap.values())
     .sort((a, b) => b.total_tasks - a.total_tasks);
 }
+
+// ==================== Task Comments ====================
+
+export async function getTaskComments(taskId: string): Promise<TaskComment[]> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .select('*, user:users!task_comments_user_id_fkey(id, name, role)')
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true });
+
+  if (error || !data) return [];
+  return data as TaskComment[];
+}
+
+export async function createTaskComment(taskId: string, userId: string, content: string): Promise<TaskComment | null> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .insert({ task_id: taskId, user_id: userId, content })
+    .select('*, user:users!task_comments_user_id_fkey(id, name, role)')
+    .single();
+
+  if (error || !data) return null;
+  return data as TaskComment;
+}
+
+export async function updateTaskComment(commentId: string, content: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('task_comments')
+    .update({ content })
+    .eq('id', commentId);
+
+  return !error;
+}
+
+export async function deleteTaskComment(commentId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('task_comments')
+    .delete()
+    .eq('id', commentId);
+
+  return !error;
+}
+
+// ==================== Task Activity ====================
+
+export async function logTaskActivity(
+  taskId: string,
+  userId: string | null,
+  action: string,
+  details?: Record<string, unknown>
+): Promise<void> {
+  await supabase
+    .from('task_activity')
+    .insert({ task_id: taskId, user_id: userId, action, details: details || null });
+}
+
+export async function getTaskActivity(taskId: string): Promise<TaskActivity[]> {
+  const { data, error } = await supabase
+    .from('task_activity')
+    .select('*, user:users!task_activity_user_id_fkey(id, name, role)')
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+  return data as TaskActivity[];
+}
+
+// ==================== Task Links ====================
+
+export async function getTaskLinks(taskId: string): Promise<TaskLink[]> {
+  const { data, error } = await supabase
+    .from('task_links')
+    .select('*, user:users!task_links_user_id_fkey(id, name, role)')
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+  return data as TaskLink[];
+}
+
+export async function createTaskLink(
+  taskId: string,
+  userId: string,
+  url: string,
+  title: string,
+  description: string
+): Promise<TaskLink | null> {
+  const { data, error } = await supabase
+    .from('task_links')
+    .insert({ task_id: taskId, user_id: userId, url, title, description })
+    .select('*, user:users!task_links_user_id_fkey(id, name, role)')
+    .single();
+
+  if (error || !data) return null;
+  return data as TaskLink;
+}
+
+export async function deleteTaskLink(linkId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('task_links')
+    .delete()
+    .eq('id', linkId);
+
+  return !error;
+}

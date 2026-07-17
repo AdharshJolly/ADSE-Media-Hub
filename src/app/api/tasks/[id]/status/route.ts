@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getTaskById, updateTaskStatus, getUserById } from '@/lib/db';
+import { getTaskById, updateTaskStatus, getUserById, logTaskActivity } from '@/lib/db';
 
 export async function PATCH(
   request: NextRequest,
@@ -35,6 +35,9 @@ export async function PATCH(
     if (!success) {
       return NextResponse.json({ success: false, error: 'Failed to update task' }, { status: 500 });
     }
+
+    // Log activity
+    await logTaskActivity(taskId, session.userId, 'status_changed', { from: task.status, to: status });
 
     return NextResponse.json({ success: true, message: 'Task status updated' });
   } catch (error) {

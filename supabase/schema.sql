@@ -96,8 +96,53 @@ create trigger update_requests_updated_at before update on requests
 create trigger update_tasks_updated_at before update on tasks
   for each row execute function update_updated_at_column();
 
+-- Task Comments table
+create table if not exists task_comments (
+  id uuid primary key default uuid_generate_v4(),
+  task_id uuid references tasks(id) on delete cascade,
+  user_id uuid references users(id) on delete cascade,
+  content text not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Task Activity table
+create table if not exists task_activity (
+  id uuid primary key default uuid_generate_v4(),
+  task_id uuid references tasks(id) on delete cascade,
+  user_id uuid references users(id) on delete set null,
+  action text not null,
+  details jsonb,
+  created_at timestamptz default now()
+);
+
+-- Task Links table
+create table if not exists task_links (
+  id uuid primary key default uuid_generate_v4(),
+  task_id uuid references tasks(id) on delete cascade,
+  user_id uuid references users(id) on delete set null,
+  url text not null,
+  title text not null default '',
+  description text not null default '',
+  created_at timestamptz default now()
+);
+
+-- Additional indexes for collaboration
+create index if not exists idx_task_comments_task_id on task_comments(task_id);
+create index if not exists idx_task_comments_created_at on task_comments(created_at);
+create index if not exists idx_task_activity_task_id on task_activity(task_id);
+create index if not exists idx_task_activity_created_at on task_activity(created_at);
+create index if not exists idx_task_links_task_id on task_links(task_id);
+
+-- Triggers for collaboration tables
+create trigger update_task_comments_updated_at before update on task_comments
+  for each row execute function update_updated_at_column();
+
 -- Disable RLS for server-side access (we handle auth via JWT in our API)
 alter table users disable row level security;
 alter table requests disable row level security;
 alter table tasks disable row level security;
 alter table notifications disable row level security;
+alter table task_comments disable row level security;
+alter table task_activity disable row level security;
+alter table task_links disable row level security;

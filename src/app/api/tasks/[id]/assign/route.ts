@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getTaskById, updateTask, getUserById, createNotification } from '@/lib/db';
+import { getTaskById, updateTask, getUserById, createNotification, logTaskActivity } from '@/lib/db';
 import { sendTaskAssignedEmail } from '@/lib/email';
 
 export async function PATCH(
@@ -43,6 +43,9 @@ export async function PATCH(
     if (!success) {
       return NextResponse.json({ success: false, error: 'Failed to assign task' }, { status: 500 });
     }
+
+    // Log activity
+    await logTaskActivity(taskId, session.userId, 'assigned', { assignee_name: assignee.name });
 
     // Notify assigned team member
     await createNotification({

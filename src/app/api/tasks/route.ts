@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getTasksPaginated, createTask, getUserById, getTeamMembers } from '@/lib/db';
+import { getTasksPaginated, createTask, getUserById, getTeamMembers, logTaskActivity } from '@/lib/db';
 import { sendTaskAssignedEmail } from '@/lib/email';
 
 export async function GET(request: NextRequest) {
@@ -78,6 +78,9 @@ export async function POST(request: NextRequest) {
     if (!task) {
       return NextResponse.json({ success: false, error: 'Failed to create task' }, { status: 500 });
     }
+
+    // Log activity
+    await logTaskActivity(task.id, session.userId, 'created', { title });
 
     // Send email in background
     sendTaskAssignedEmail(
