@@ -61,16 +61,16 @@ export default function Sidebar() {
   });
 
   return (
-    <aside className="bg-gray-900 text-white w-64 min-h-screen p-4 hidden lg:block">
+    <aside className="bg-card border-r border-border text-foreground w-64 min-h-screen p-4 hidden lg:block">
       <nav className="space-y-2">
         {navItems.map((item) => (
           <Link
             key={item.to}
             href={item.to}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+            className={`flex items-center space-x-3 px-4 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-outline ${
               pathname === item.to
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-muted text-primary border-l-4 border-yellow-accent font-medium'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground border-l-4 border-transparent'
             }`}
           >
             {item.icon}
@@ -79,10 +79,10 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-8 p-4 bg-gray-800 rounded-lg">
-        <p className="text-sm text-gray-400">Logged in as</p>
-        <p className="font-medium text-white mt-1">{user?.name}</p>
-        <p className="text-xs text-gray-400 capitalize mt-1">{user?.role?.replace('_', ' ')}</p>
+      <div className="mt-8 p-4 bg-muted border border-border rounded-lg">
+        <p className="text-sm text-muted-foreground">Logged in as</p>
+        <p className="font-medium text-foreground mt-1">{user?.name}</p>
+        <p className="text-xs text-muted-foreground capitalize mt-1">{user?.role?.replace('_', ' ')}</p>
       </div>
     </aside>
   );
