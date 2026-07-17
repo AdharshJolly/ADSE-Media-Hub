@@ -8,8 +8,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 
 export const metadata: Metadata = {
-  title: "Media Team Portal",
-  description: "Task management system for ADSE Media Team",
+  title: "ADSE Hub",
+  description: "Task management and collaboration platform for ADSE Media Team",
 };
 
 export default function RootLayout({

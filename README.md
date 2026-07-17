@@ -1,6 +1,6 @@
-# Media Team Portal
+# ADSE Hub
 
-A comprehensive task management system for media teams, built with Next.js at the repository root and Google Apps Script backend automation.
+A comprehensive task management and collaboration platform for media teams, built with Next.js at the repository root and Google Apps Script backend automation.
 
 ## Features
 

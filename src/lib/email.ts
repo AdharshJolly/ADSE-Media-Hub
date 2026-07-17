@@ -57,7 +57,7 @@ export async function sendRegistrationPendingEmail(
     subject: `New Registration Request - ${userName}`,
     html: `
       <h2>New Registration Request</h2>
-      <p>A new user has requested access to the Media Team Portal:</p>
+      <p>A new user has requested access to ADSE Hub:</p>
       <ul>
         <li><strong>Name:</strong> ${userName}</li>
         <li><strong>Email:</strong> ${userEmail}</li>
@@ -75,11 +75,11 @@ export async function sendAccountApprovedEmail(
 ): Promise<boolean> {
   return sendEmail({
     to: userEmail,
-    subject: "Welcome to Media Team Portal!",
+    subject: "Welcome to ADSE Hub!",
     html: `
-      <h2>Welcome to Media Team Portal!</h2>
+      <h2>Welcome to ADSE Hub!</h2>
       <p>Hi ${userName},</p>
-      <p>Your account has been approved! You can now access the Media Team Portal.</p>
+      <p>Your account has been approved! You can now access ADSE Hub.</p>
       <a href="${APP_URL}/login" style="display:inline-block;padding:10px 20px;background:#16a34a;color:white;text-decoration:none;border-radius:5px;">Login Now</a>
       <p>We look forward to working with you!</p>
     `,

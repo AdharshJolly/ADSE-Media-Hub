@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, appendRow, generateId } from '@/lib/google-sheets';
+import { getSheetData, appendRow, generateId, getCurrentUser } from '@/lib/google-sheets';
 import { SHEETS } from '@/lib/google-sheets';
 
 export async function GET(request: NextRequest) {
@@ -13,13 +13,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
-    const users = await getSheetData(SHEETS.USERS);
-    const currentUser = users.find((row, index) => index > 0 && row[0] === session.userId);
+    const currentUser = await getCurrentUser(session.userId);
     const userRole = currentUser?.[4];
 
     let requests = await getSheetData(SHEETS.REQUESTS);
-    
-    // Skip header row
     requests = requests.slice(1);
 
     // Filter based on role
@@ -32,7 +29,6 @@ export async function GET(request: NextRequest) {
       requests = requests.filter((row) => row[10] === status);
     }
 
-    // Map to objects
     const requestsData = requests.map((row) => ({
       request_id: row[0],
       requestor_id: row[1],
@@ -50,7 +46,11 @@ export async function GET(request: NextRequest) {
       updated_at: row[13],
     }));
 
-    return NextResponse.json({ success: true, requests: requestsData });
+    return NextResponse.json({ success: true, requests: requestsData }, {
+      headers: {
+        'Cache-Control': 'private, max-age=5, stale-while-revalidate=15',
+      },
+    });
   } catch (error) {
     console.error('Get requests error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch requests' }, { status: 500 });
@@ -71,11 +71,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Generate request ID
     const requestId = generateId('REQ');
     const now = new Date().toISOString();
 
-    // Add request to sheet
     await appendRow(SHEETS.REQUESTS, [
       requestId,
       session.userId,
@@ -88,7 +86,7 @@ export async function POST(request: NextRequest) {
       deadline,
       priority || 'medium',
       'pending',
-      '', // coordinator_notes
+      '',
       now,
       now,
     ]);

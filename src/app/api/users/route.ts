@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData } from '@/lib/google-sheets';
-import { SHEETS } from '@/lib/google-sheets';
+import { getSheetData, getCurrentUser, SHEETS } from '@/lib/google-sheets';
 
 export async function GET() {
   try {
@@ -10,15 +9,12 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Get current user to check role
-    const users = await getSheetData(SHEETS.USERS);
-    const currentUser = users.find((row, index) => index > 0 && row[0] === session.userId);
-    
+    const currentUser = await getCurrentUser(session.userId);
     if (!currentUser || (currentUser[4] !== 'coordinator' && currentUser[4] !== 'student_head')) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
     }
 
-    // Get all users (skip header)
+    const users = await getSheetData(SHEETS.USERS);
     const allUsers = users.slice(1).map((row) => ({
       user_id: row[0],
       email: row[1],
@@ -30,7 +26,11 @@ export async function GET() {
       created_at: row[8],
     }));
 
-    return NextResponse.json({ success: true, users: allUsers });
+    return NextResponse.json({ success: true, users: allUsers }, {
+      headers: {
+        'Cache-Control': 'private, max-age=15, stale-while-revalidate=60',
+      },
+    });
   } catch (error) {
     console.error('Get users error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 });

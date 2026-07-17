@@ -1,5 +1,5 @@
 /**
- * Media Team Portal - Main Entry Point
+ * ADSE Hub - Main Entry Point
  * Google Apps Script Backend
  */
 
@@ -67,7 +67,7 @@ function doGet(e) {
   return ContentService.createTextOutput(
     JSON.stringify({
       success: true,
-      message: "Media Team Portal API",
+      message: "ADSE Hub API",
       version: "1.0.0",
       usage: "Use POST requests with action parameter",
     }),
@@ -273,7 +273,7 @@ function createDailyTrigger() {
  * Test function - Run this from Apps Script editor to verify setup
  */
 function testSetup() {
-  console.log("Testing Media Team Portal configuration...");
+  console.log("Testing ADSE Hub configuration...");
 
   // Check config
   const configCheck = checkConfig();

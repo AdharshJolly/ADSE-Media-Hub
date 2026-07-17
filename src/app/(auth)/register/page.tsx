@@ -65,7 +65,7 @@ export default function RegisterPage() {
           Create Account
         </h1>
         <p className="text-center text-muted-foreground mb-8">
-          Join the Media Team Portal
+          Join ADSE Hub
         </p>
         
         <form onSubmit={handleSubmit} className="space-y-6">

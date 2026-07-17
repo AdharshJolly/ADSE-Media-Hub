@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData } from '@/lib/google-sheets';
-import { SHEETS } from '@/lib/google-sheets';
+import { getSheetData, SHEETS } from '@/lib/google-sheets';
 
 export async function GET() {
   try {
@@ -12,7 +11,6 @@ export async function GET() {
 
     const users = await getSheetData(SHEETS.USERS);
     
-    // Get all active team members (skip header)
     const teamMembers = users
       .slice(1)
       .filter(
@@ -28,7 +26,11 @@ export async function GET() {
         skills: row[5],
       }));
 
-    return NextResponse.json({ success: true, teamMembers });
+    return NextResponse.json({ success: true, teamMembers }, {
+      headers: {
+        'Cache-Control': 'private, max-age=30, stale-while-revalidate=120',
+      },
+    });
   } catch (error) {
     console.error('Get team members error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch team members' }, { status: 500 });

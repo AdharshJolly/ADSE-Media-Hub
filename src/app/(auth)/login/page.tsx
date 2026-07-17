@@ -33,7 +33,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
       <div className="bg-card text-foreground p-8 md:p-10 rounded-2xl border border-border shadow-xl w-full max-w-md">
         <h1 className="text-3xl font-bold text-center mb-2 tracking-tight text-foreground">
-          Media Team Portal
+          ADSE Hub
         </h1>
         <p className="text-center text-muted-foreground mb-8">
           Sign in to your account

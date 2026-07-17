@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getSheetData, updateRow } from '@/lib/google-sheets';
+import { getSheetData, updateRow, getCurrentUser, SHEETS } from '@/lib/google-sheets';
 import { sendAccountApprovedEmail } from '@/lib/email';
-import { SHEETS } from '@/lib/google-sheets';
 
 export async function POST(
   request: NextRequest,
@@ -16,27 +15,23 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Check if user is coordinator or student head
-    const users = await getSheetData(SHEETS.USERS);
-    const currentUser = users.find((row, index) => index > 0 && row[0] === session.userId);
-    
+    const currentUser = await getCurrentUser(session.userId);
     if (!currentUser || (currentUser[4] !== 'coordinator' && currentUser[4] !== 'student_head')) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
     }
 
-    // Find user to approve
+    const users = await getSheetData(SHEETS.USERS);
     const userIndex = users.findIndex((row, index) => index > 0 && row[0] === userId);
     if (userIndex === -1) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    // Update approval status (column 7 = is_approved)
     const userRow = users[userIndex];
     userRow[7] = 'TRUE';
     await updateRow(SHEETS.USERS, userIndex, userRow);
 
-    // Send welcome email
-    await sendAccountApprovedEmail(userRow[1], userRow[3]);
+    // Send email in background
+    sendAccountApprovedEmail(userRow[1], userRow[3]).catch(console.error);
 
     return NextResponse.json({ success: true, message: 'User approved successfully' });
   } catch (error) {

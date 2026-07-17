@@ -8,7 +8,7 @@ import Sidebar from '@/components/Layout/Sidebar';
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-100">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="flex">
           <Sidebar />
