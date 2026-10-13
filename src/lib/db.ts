@@ -1,4 +1,7 @@
 import { supabase } from './supabase';
+import { sendPushToUser } from './push';
+import { taskSearchFilter } from './search';
+import { after } from 'next/server';
 export { supabase };
 import type {
   User,
@@ -7,7 +10,9 @@ import type {
   Notification,
   Workload,
   DashboardStats,
-  UserRole,
+  TaskComment,
+  TaskActivity,
+  TaskLink,
   TaskStatus,
   RequestStatus,
   PaginatedResponse,
@@ -77,7 +82,29 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<bo
     .update(updates)
     .eq('id', id);
 
+  sessionUserCache.delete(id);
   return !error;
+}
+
+// Every authenticated request needs the user row, which costs a database round trip.
+// Cache it briefly per server instance. A role change or deactivation made on another
+// instance can take up to SESSION_USER_TTL_MS to apply. Users who must change their
+// password are never cached, so finishing the change takes effect immediately.
+const SESSION_USER_TTL_MS = 30_000;
+const sessionUserCache = new Map<string, { user: User; at: number }>();
+
+export async function getSessionUser(id: string): Promise<User | null> {
+  const hit = sessionUserCache.get(id);
+  if (hit && Date.now() - hit.at < SESSION_USER_TTL_MS) return hit.user;
+
+  const user = await getUserById(id);
+  if (user && !user.must_change_password) {
+    if (sessionUserCache.size > 500) sessionUserCache.clear();
+    sessionUserCache.set(id, { user, at: Date.now() });
+  } else {
+    sessionUserCache.delete(id);
+  }
+  return user;
 }
 
 // ==================== Requests ====================
@@ -190,14 +217,17 @@ export async function getTasks(filters?: { status?: TaskStatus | 'active'; assig
 export async function getTasksPaginated(
   page: number,
   pageSize: number,
-  filters?: { status?: TaskStatus | 'active'; assigned_to?: string }
+  filters?: { status?: TaskStatus | 'active'; assigned_to?: string; request_ids?: string[]; search?: string }
 ): Promise<PaginatedResponse<Task>> {
   let query = supabase
     .from('tasks')
-    .select('*', { count: 'exact' })
+    .select('*, assignee:users!tasks_assigned_to_fkey(id, name)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1);
 
+  if (filters?.search) {
+    query = query.or(await taskSearchFilter(filters.search));
+  }
   if (filters?.status) {
     if (filters.status === 'active') {
       query = query.neq('status', 'completed');
@@ -207,6 +237,13 @@ export async function getTasksPaginated(
   }
   if (filters?.assigned_to) {
     query = query.eq('assigned_to', filters.assigned_to);
+  }
+
+  if (filters?.request_ids) {
+    if (filters.request_ids.length === 0) {
+      return { data: [], count: 0, page, pageSize, totalPages: 0 };
+    }
+    query = query.in('request_id', filters.request_ids);
   }
 
   const { data, error, count } = await query;
@@ -275,7 +312,7 @@ export async function getNotifications(recipientId: string, unreadOnly = false):
     query = query.eq('is_read', false);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(100);
   if (error || !data) return [];
   return data as Notification[];
 }
@@ -291,11 +328,12 @@ export async function getUnreadNotificationCount(recipientId: string): Promise<n
   return count || 0;
 }
 
-export async function markNotificationRead(id: string): Promise<boolean> {
+export async function markNotificationRead(id: string, recipientId: string): Promise<boolean> {
   const { error } = await supabase
     .from('notifications')
     .update({ is_read: true })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('recipient_id', recipientId);
 
   return !error;
 }
@@ -318,92 +356,36 @@ export async function createNotification(notification: Omit<Notification, 'id' |
     .single();
 
   if (error || !data) return null;
+
+  // Browser push is best-effort; after() keeps it alive past the response on Vercel.
+  const push = () =>
+    sendPushToUser(notification.recipient_id, {
+      title: notification.title,
+      body: notification.message,
+      url: notification.related_task_id ? '/tasks' : '/notifications',
+    }).catch((e) => console.error('Push send error:', e));
+  try {
+    after(push);
+  } catch {
+    void push();
+  }
+
   return data as Notification;
 }
 
 // ==================== Dashboard ====================
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const [tasksRes, requestsRes, usersRes] = await Promise.all([
-    supabase.from('tasks').select('status'),
-    supabase.from('requests').select('status'),
-    supabase.from('users').select('role, is_active, is_approved'),
-  ]);
-
-  const tasks = tasksRes.data || [];
-  const requests = requestsRes.data || [];
-  const users = usersRes.data || [];
-
-  const taskStats = {
-    total: tasks.length,
-    pending: tasks.filter(t => t.status === 'pending').length,
-    in_progress: tasks.filter(t => t.status === 'in_progress').length,
-    completed: tasks.filter(t => t.status === 'completed').length,
-    overdue: tasks.filter(t => t.status === 'overdue').length,
-  };
-
-  const requestStats = {
-    total: requests.length,
-    pending: requests.filter(r => r.status === 'pending').length,
-    approved: requests.filter(r => r.status === 'approved').length,
-    rejected: requests.filter(r => r.status === 'rejected').length,
-    completed: requests.filter(r => r.status === 'completed').length,
-  };
-
-  const userStats = {
-    total: users.length,
-    pendingApproval: users.filter(u => !u.is_approved).length,
-    active: users.filter(u => u.is_active && u.is_approved).length,
-    coordinators: users.filter(u => u.role === 'coordinator').length,
-    studentHeads: users.filter(u => u.role === 'student_head').length,
-    teamMembers: users.filter(u => u.role === 'team_member').length,
-    requestors: users.filter(u => u.role === 'requestor').length,
-  };
-
-  return { taskStats, requestStats, userStats };
+  // One round trip; counting happens in Postgres (see get_dashboard_stats in schema.sql).
+  const { data, error } = await supabase.rpc('get_dashboard_stats');
+  if (error || !data) throw error ?? new Error('get_dashboard_stats returned no data');
+  return data as DashboardStats;
 }
 
 export async function getTeamWorkload(): Promise<Workload[]> {
-  const [tasksRes, usersRes] = await Promise.all([
-    supabase.from('tasks').select('assigned_to, status'),
-    supabase.from('users').select('id, name, email, skills')
-      .eq('role', 'team_member')
-      .eq('is_active', true)
-      .eq('is_approved', true),
-  ]);
-
-  const tasks = tasksRes.data || [];
-  const users = usersRes.data || [];
-
-  const workloadMap = new Map<string, Workload>();
-
-  for (const user of users) {
-    workloadMap.set(user.id, {
-      user_id: user.id,
-      name: user.name,
-      email: user.email,
-      skills: user.skills,
-      total_tasks: 0,
-      pending: 0,
-      in_progress: 0,
-      completed: 0,
-      overdue: 0,
-    });
-  }
-
-  for (const task of tasks) {
-    const member = workloadMap.get(task.assigned_to);
-    if (member) {
-      member.total_tasks++;
-      if (task.status === 'pending') member.pending++;
-      else if (task.status === 'in_progress') member.in_progress++;
-      else if (task.status === 'completed') member.completed++;
-      else if (task.status === 'overdue') member.overdue++;
-    }
-  }
-
-  return Array.from(workloadMap.values())
-    .sort((a, b) => b.total_tasks - a.total_tasks);
+  const { data, error } = await supabase.rpc('get_team_workload');
+  if (error) throw error;
+  return (data ?? []) as Workload[];
 }
 
 // ==================== Task Comments ====================

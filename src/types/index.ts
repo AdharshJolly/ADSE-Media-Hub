@@ -44,7 +44,7 @@ export interface Task {
 }
 
 export interface Notification {
-  notification_id: string;
+  id: string;
   recipient_id: string;
   type: 'task_assigned' | 'reminder_7day' | 'reminder_3day' | 'reminder_1day' | 'overdue' | 'status_update';
   title: string;

@@ -8,6 +8,7 @@ export interface User {
   id: string;
   email: string;
   password_hash?: string;
+  must_change_password: boolean;
   name: string;
   role: UserRole;
   skills: string;
@@ -98,6 +99,7 @@ export interface DashboardStats {
   userStats: {
     total: number;
     pendingApproval: number;
+    awaitingFirstLogin?: number;
     active: number;
     coordinators: number;
     studentHeads: number;
