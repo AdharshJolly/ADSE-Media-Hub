@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/lib/auth-context';
 import { useDebounce } from '@/hooks/useDebounce';
-import { fetchJson, peek } from '@/lib/client-cache';
+import { fetchJson, peek, type Api } from '@/lib/client-cache';
 import { TableSkeleton, CardSkeleton } from '@/components/ui/skeleton';
 import KanbanBoard from '@/components/Kanban/KanbanBoard';
 import { Avatar, Chip, Empty, Icon, Modal, PageHead, Pri, TypeTag, assigneeLabel, fmtDate, isLate } from '@/components/ui/kit';
@@ -69,7 +69,7 @@ function TasksView() {
     [canManageTasks, statusFilter, debouncedSearch, page, paged],
   );
 
-  const applyTasks = (data: any) => {
+  const applyTasks = (data: Api) => {
     setTasks(data.data);
     setTotalPages(data.totalPages || 1);
     setTotalCount(data.count || 0);
@@ -87,7 +87,7 @@ function TasksView() {
     skipSpinner.current = false;
     try {
       const data = await fetchJson(url);
-      if ((data as any).success) applyTasks(data);
+      if ((data as Api).success) applyTasks(data);
     } catch {
       toast.error('Failed to fetch tasks');
     } finally {

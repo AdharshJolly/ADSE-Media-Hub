@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson, peek, type Api } from '@/lib/client-cache';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
@@ -29,12 +30,12 @@ const ACTIONS: Array<{ href: string; label: string; sub: string; icon: IconName 
 export default function AdminPage() {
   const { canManageUsers } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState<SystemStats | null>(null);
+  const [stats, setStats] = useState<SystemStats | null>(() => peek('/api/admin/stats')?.stats ?? null);
   const [settings, setSettings] = useState<SystemSettings>({
     maintenanceMode: false,
     emailNotifications: true,
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !peek('/api/admin/stats'));
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
@@ -51,8 +52,7 @@ export default function AdminPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const response = await fetch('/api/admin/stats');
-      const data = await response.json();
+      const data: Api = await fetchJson('/api/admin/stats');
       if (data.success) {
         setStats(data.stats);
       }

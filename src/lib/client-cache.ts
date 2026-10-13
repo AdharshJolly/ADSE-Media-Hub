@@ -1,14 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Tiny stale-while-revalidate cache for client pages. Pages paint the last
 // response instantly, then refresh in the background. Lives for the tab session.
+// Responses are untyped JSON from our own API
+export type Api = any;
+
 const store = new Map<string, any>();
 
 export function peek<T = any>(url: string): T | undefined {
   return store.get(url);
 }
 
-export async function fetchJson<T = any>(url: string): Promise<T | { success: false }> {
+export async function fetchJson<T = any>(url: string, init?: RequestInit): Promise<T | { success: false }> {
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, init);
     const j = await r.json();
     if (j?.success) store.set(url, j);
     return j;

@@ -1,11 +1,12 @@
 'use client';
 
 import { safeHttpUrl } from '@/lib/validation';
-import { Suspense, useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/lib/auth-context';
+import { fetchJson, peek, type Api } from '@/lib/client-cache';
 import { useDebounce } from '@/hooks/useDebounce';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { Chip, Empty, Icon, Modal, PageHead, Pri, TypeTag, fmtDate } from '@/components/ui/kit';
@@ -28,17 +29,30 @@ interface RequestWithTask {
   tasks: Array<{ id: string; status: string; assigned_to: string; title: string }> | null;
 }
 
+function buildRequestsUrl(status: string, search: string, page: number) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (search) params.set('search', search);
+  params.set('page', page.toString());
+  params.set('pageSize', '10');
+  return `/api/requests?${params}`;
+}
+
 function RequestsInner() {
   const { canManageTasks, isRequestor } = useAuth();
   const searchParams = useSearchParams();
   const highlight = searchParams.get('highlight');
-  const [requests, setRequests] = useState<RequestWithTask[]>([]);
-  const [loading, setLoading] = useState(true);
+  const seed = useMemo(() => peek(buildRequestsUrl('', searchParams.get('q') || '', 1)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []);
+  const skipSpinner = useRef(!!seed);
+  const [requests, setRequests] = useState<RequestWithTask[]>(seed?.data ?? []);
+  const [loading, setLoading] = useState(!seed);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(seed?.totalPages || 1);
+  const [totalCount, setTotalCount] = useState(seed?.count || 0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<RequestWithTask | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
@@ -53,22 +67,24 @@ function RequestsInner() {
     setPage(1);
   }, [urlQ]);
 
-  const fetchRequests = useCallback(async () => {
-    try {
+  const fetchRequests = useCallback(async (fresh = false) => {
+    const url = buildRequestsUrl(debouncedStatus, debouncedSearch, page);
+    const apply = (d: Api) => {
+      setRequests(d.data);
+      setTotalPages(d.totalPages);
+      setTotalCount(d.count);
+    };
+    const hit = fresh ? undefined : peek(url);
+    if (hit) {
+      apply(hit);
+      setLoading(false);
+    } else if (!skipSpinner.current) {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (debouncedStatus) params.set('status', debouncedStatus);
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      params.set('page', page.toString());
-      params.set('pageSize', '10');
-
-      const response = await fetch(`/api/requests?${params}`, { cache: 'no-store' });
-      const data = await response.json();
-      if (data.success) {
-        setRequests(data.data);
-        setTotalPages(data.totalPages);
-        setTotalCount(data.count);
-      }
+    }
+    skipSpinner.current = false;
+    try {
+      const data: Api = await fetchJson(url, { cache: 'no-store' });
+      if (data.success) apply(data);
     } catch {
       toast.error('Failed to fetch requests');
     } finally {
@@ -97,7 +113,7 @@ function RequestsInner() {
         toast.error(data.error || 'Failed to approve request');
       } else {
         toast.success('Request approved and task created');
-        fetchRequests();
+        fetchRequests(true);
       }
     } catch {
       setRequests(originalRequests);

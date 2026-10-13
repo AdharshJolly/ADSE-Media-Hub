@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchJson, peek, type Api } from '@/lib/client-cache';
 import toast from 'react-hot-toast';
 import CalendarView from '@/components/Calendar/CalendarView';
 import { PageHead } from '@/components/ui/kit';
@@ -17,14 +18,13 @@ interface Task {
 }
 
 export default function CalendarPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(() => peek('/api/tasks/calendar')?.tasks ?? []);
+  const [loading, setLoading] = useState(() => !peek('/api/tasks/calendar'));
 
   useEffect(() => {
     const fetchTasks = async () => {
       try {
-        const response = await fetch('/api/tasks/calendar');
-        const data = await response.json();
+        const data: Api = await fetchJson('/api/tasks/calendar');
         if (data.success) setTasks(data.tasks);
       } catch {
         toast.error('Failed to fetch tasks');

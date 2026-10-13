@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson, peek, type Api } from '@/lib/client-cache';
 import toast from 'react-hot-toast';
 import PushNotificationManager from '@/components/Notifications/PushNotificationManager';
 import { Empty, Icon, PageHead, fmtDate } from '@/components/ui/kit';
@@ -28,14 +29,13 @@ function iconFor(type: string): { icon: IconName; k: string } {
 }
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<Notification[]>(() => peek('/api/notifications')?.notifications ?? []);
+  const [loading, setLoading] = useState(() => !peek('/api/notifications'));
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const response = await fetch('/api/notifications');
-      const data = await response.json();
+      const data: Api = await fetchJson('/api/notifications');
       if (data.success) setNotifications(data.notifications);
     } catch {
       toast.error('Failed to fetch notifications');

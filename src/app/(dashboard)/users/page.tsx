@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { fetchJson, peek, type Api } from '@/lib/client-cache';
 import toast from 'react-hot-toast';
 import { Avatar, Chip, Empty, Field, Icon, Modal, PageHead, ROLE_LABEL, fmtDate } from '@/components/ui/kit';
 import type { IconName } from '@/components/ui/kit';
@@ -44,8 +45,8 @@ export default function UsersPage() {
 function UsersInner() {
   const { user, isCoordinator } = useAuth();
   const q = (useSearchParams().get('q') || '').trim();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>(() => peek('/api/users')?.users ?? []);
+  const [loading, setLoading] = useState(() => !peek('/api/users'));
   const [filter, setFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -62,8 +63,7 @@ function UsersInner() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await fetch('/api/users', { cache: 'no-store' });
-      const data = await response.json();
+      const data: Api = await fetchJson('/api/users', { cache: 'no-store' });
       if (data.success) {
         setUsers(data.users);
       }
