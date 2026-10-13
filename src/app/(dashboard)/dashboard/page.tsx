@@ -65,6 +65,7 @@ function WorkloadCard({ workload, link }: { workload: Workload[]; link?: boolean
             </div>
             <div className="row wrap" style={{ gap: 6 }}>
               <span className="tag">{m.in_progress + m.pending} active</span>
+              {m.in_review > 0 ? <span className="chip c-rev">{m.in_review} in review</span> : null}
               <span className="tag">{m.completed} done</span>
               {m.overdue > 0 ? <span className="chip c-over">{m.overdue} overdue</span> : null}
             </div>
@@ -235,6 +236,7 @@ export default function DashboardPage() {
     const mine = tasks;
     const done = mine.filter((t) => t.status === 'completed').length;
     const active = mine.filter((t) => t.status === 'in_progress').length;
+    const inReview = mine.filter((t) => t.status === 'in_review').length;
     const over = mine.filter((t) => t.status === 'overdue').length;
     const pct = mine.length ? Math.round((done / mine.length) * 100) : 0;
     const next = mine
@@ -250,7 +252,7 @@ export default function DashboardPage() {
       <div className="col" style={{ gap: 20 }}>
         <PageHead
           title={`${greeting()}, ${firstName(user.name)}`}
-          sub={`You have ${active} task${active === 1 ? '' : 's'} in progress and ${over} overdue.`}
+          sub={`You have ${active} task${active === 1 ? '' : 's'} in progress${inReview ? `, ${inReview} in review` : ''} and ${over} overdue.`}
           actions={<Link href="/tasks" className="btn btn-primary"><Icon name="tasks" />Open my tasks</Link>}
         />
         <div className="grid g4">
@@ -330,8 +332,10 @@ export default function DashboardPage() {
         }
       />
       <div className="grid g4">
-        <Stat icon="tasks" label="Total tasks" value={ts?.total || 0} />
         <Stat icon="clock" label="In progress" value={ts?.in_progress || 0} />
+        <Link href="/tasks?status=in_review" style={{ display: 'contents' }}>
+          <Stat icon="check" label="Needs review" value={ts?.in_review || 0} note={ts?.in_review ? 'Waiting for approval' : undefined} />
+        </Link>
         <Stat icon="check" label="Completed" value={ts?.completed || 0} note={ts?.total ? `${completedPct}% of all tasks` : undefined} />
         <Stat icon="alert" label="Overdue" value={ts?.overdue || 0} note="Needs attention" />
       </div>

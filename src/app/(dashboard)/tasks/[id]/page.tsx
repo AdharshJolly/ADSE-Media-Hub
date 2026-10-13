@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import TaskComments from '@/components/Tasks/TaskComments';
 import TaskActivity from '@/components/Tasks/TaskActivity';
 import TaskLinks from '@/components/Tasks/TaskLinks';
-import { Avatar, Chip, Icon, Modal, PageHead, Pri, Spinner, TypeTag, fmtDate } from '@/components/ui/kit';
+import { Avatar, Chip, Field, Icon, Modal, PageHead, Pri, Spinner, TypeTag, fmtDate, isLate } from '@/components/ui/kit';
 import type { Task } from '@/types/database';
 
 interface Member {
@@ -26,6 +26,11 @@ export default function TaskDetailPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reworkOpen, setReworkOpen] = useState(false);
+  const [reworkNote, setReworkNote] = useState('');
+  const [reworkWho, setReworkWho] = useState<string[]>([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
 
   const taskId = params.id as string;
   const currentUserId = user?.user_id || user?.id || '';
@@ -81,14 +86,15 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleAssign = async (assignedTo: string) => {
-    if (!assignedTo) return;
+  const handleAssign = async (assigneeIds: string[]) => {
+    if (assigneeIds.length === 0) return;
+    setAssignOpen(false);
     setUpdating(true);
     try {
       const response = await fetch(`/api/tasks/${taskId}/assign`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignedTo }),
+        body: JSON.stringify({ assigneeIds }),
       });
       const data = await response.json();
       if (data.success) {
@@ -99,6 +105,32 @@ export default function TaskDetailPage() {
       }
     } catch {
       toast.error('Failed to assign task');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleReview = async (action: 'submit' | 'approve' | 'rework') => {
+    setUpdating(true);
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note: action === 'rework' ? reworkNote : undefined, userIds: action === 'rework' ? reworkWho : undefined }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success(
+          action === 'approve' ? 'Task approved' : action === 'rework' ? 'Sent back for rework' : data.status === 'in_review' ? 'Submitted for review' : 'Submitted. Waiting on the other assignees'
+        );
+        setReworkOpen(false);
+        setReworkNote('');
+        fetchTask();
+      } else {
+        toast.error(data.error || 'Action failed');
+      }
+    } catch {
+      toast.error('Action failed');
     } finally {
       setUpdating(false);
     }
@@ -142,20 +174,43 @@ export default function TaskDetailPage() {
 
   // Approved requests are parked on the approver until someone is picked: treat as unassigned
   const unassigned = canManageTasks && !!task.request_id && task.assigned_to === task.created_by && task.status === 'pending';
-  const isMine = !!user && task.assigned_to === currentUserId && !unassigned;
-  const assignee = teamMembers.find((m) => m.id === task.assigned_to);
-  const assigneeName = assignee?.name || (task.assigned_to === currentUserId ? user?.name : undefined);
-  const late = task.status === 'overdue';
+  const assignees = task.assignees ?? [];
+  const me = assignees.find((a) => a.user_id === currentUserId);
+  const isMine = !!user && !unassigned && (me ? true : assignees.length === 0 && task.assigned_to === currentUserId);
+  const late = isLate(task);
+  const inReview = task.status === 'in_review';
+  const lockedAssignees = inReview || task.status === 'completed';
+  const waiting = assignees.filter((a) => a.state !== 'submitted').length;
+
+  const openAssign = () => {
+    setPicked(assignees.map((a) => a.user_id));
+    setAssignOpen(true);
+  };
+  const openRework = () => {
+    setReworkWho(assignees.map((a) => a.user_id));
+    setReworkNote('');
+    setReworkOpen(true);
+  };
 
   const primaryAction =
     isMine && task.status === 'pending' ? (
       <button type="button" className="btn btn-primary" disabled={updating} onClick={() => handleStatusUpdate('in_progress')}>
         Start task
       </button>
-    ) : isMine && (task.status === 'in_progress' || task.status === 'overdue') ? (
-      <button type="button" className="btn btn-ok" disabled={updating} onClick={() => handleStatusUpdate('completed')}>
-        <Icon name="check" size={16} /> Mark complete
+    ) : isMine && (task.status === 'in_progress' || task.status === 'overdue') && me?.state !== 'submitted' ? (
+      <button type="button" className="btn btn-ok" disabled={updating} onClick={() => handleReview('submit')}>
+        <Icon name="check" size={16} /> Submit for review
       </button>
+    ) : null;
+
+  const reviewActions =
+    canManageTasks && inReview ? (
+      <>
+        <button type="button" className="btn" disabled={updating} onClick={openRework}>Request rework</button>
+        <button type="button" className="btn btn-ok" disabled={updating} onClick={() => handleReview('approve')}>
+          <Icon name="check" size={16} /> Approve
+        </button>
+      </>
     ) : null;
 
   return (
@@ -178,6 +233,7 @@ export default function TaskDetailPage() {
           actions={
             <>
               {primaryAction}
+              {reviewActions}
               {canManageTasks ? (
                 <button type="button" className="btn btn-danger" disabled={updating} onClick={() => setConfirmDelete(true)}>
                   <Icon name="trash" size={16} /> Delete
@@ -223,21 +279,38 @@ export default function TaskDetailPage() {
 
           <div className="card card-p col" style={{ gap: 12 }}>
             <h2 className="t-h2">Assigned to</h2>
-            {unassigned ? (
+            {unassigned || assignees.length === 0 ? (
               <p className="t-sm muted">Not assigned yet.</p>
             ) : (
-              <div className="row" style={{ gap: 12 }}>
-                <Avatar name={assigneeName} size="lg" />
-                <b className="trunc" style={{ fontWeight: 500 }}>{assigneeName || 'Team member'}</b>
-              </div>
+              assignees.map((a) => (
+                <div key={a.user_id} className="col" style={{ gap: 6 }}>
+                  <div className="row" style={{ gap: 12 }}>
+                    <Avatar name={a.name} size="lg" />
+                    <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
+                      <b className="trunc" style={{ fontWeight: 500 }}>{a.name}</b>
+                      {assignees.length > 1 && a.is_lead ? <span className="t-xs muted">Lead</span> : null}
+                    </div>
+                    {task.status !== 'pending' && task.status !== 'completed' ? (
+                      <span className={`chip ${a.state === 'submitted' ? 'c-rev' : a.state === 'needs_rework' ? 'c-over' : 'c-neutral'}`}>
+                        {a.state === 'submitted' ? 'Submitted' : a.state === 'needs_rework' ? 'Rework' : 'Working'}
+                      </span>
+                    ) : null}
+                  </div>
+                  {a.state === 'needs_rework' && a.rework_note ? (
+                    <p className="t-sm" style={{ whiteSpace: 'pre-wrap', color: 'var(--s-over-fg)', background: 'var(--s-over-bg)', borderRadius: 8, padding: '8px 10px' }}>
+                      {a.rework_note}
+                    </p>
+                  ) : null}
+                </div>
+              ))
             )}
+            {assignees.length > 1 && task.status === 'in_progress' && waiting > 0 ? (
+              <p className="t-xs muted">Goes to review when everyone has submitted ({waiting} still to go).</p>
+            ) : null}
             {canManageTasks ? (
-              <select className="input sel" value="" disabled={updating} onChange={(e) => handleAssign(e.target.value)}>
-                <option value="" disabled>{unassigned ? 'Assign to…' : 'Reassign to…'}</option>
-                {teamMembers.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              <button type="button" className="btn btn-sm" disabled={updating || lockedAssignees} onClick={openAssign}>
+                {unassigned || assignees.length === 0 ? 'Assign…' : 'Change assignees…'}
+              </button>
             ) : null}
           </div>
 
@@ -259,6 +332,69 @@ export default function TaskDetailPage() {
           <TaskActivity taskId={taskId} />
         </div>
       </div>
+
+      {assignOpen ? (
+        <Modal
+          title="Who is working on this?"
+          onClose={() => setAssignOpen(false)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setAssignOpen(false)}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={picked.length === 0} onClick={() => handleAssign(picked)}>Save</button>
+            </>
+          }
+        >
+          <div className="col" style={{ gap: 10 }}>
+            <p className="t-sm muted">The first person you tick is the lead. The task goes to review once everyone has submitted.</p>
+            {teamMembers.map((m) => (
+              <label key={m.id} className="row" style={{ gap: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={picked.includes(m.id)}
+                  onChange={(e) => setPicked((p) => (e.target.checked ? [...p, m.id] : p.filter((x) => x !== m.id)))}
+                />
+                {m.name}
+              </label>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
+
+      {reworkOpen ? (
+        <Modal
+          title="Request rework"
+          onClose={() => setReworkOpen(false)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setReworkOpen(false)}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={updating || !reworkNote.trim() || reworkWho.length === 0} onClick={() => handleReview('rework')}>
+                Send back
+              </button>
+            </>
+          }
+        >
+          <div className="col" style={{ gap: 14 }}>
+            <Field label="What needs to change?" htmlFor="rwnote">
+              <textarea id="rwnote" className="input" value={reworkNote} maxLength={2000} onChange={(e) => setReworkNote(e.target.value)} style={{ height: 96 }} />
+            </Field>
+            {assignees.length > 1 ? (
+              <div className="col" style={{ gap: 8 }}>
+                <span className="eyebrow">Send back to</span>
+                {assignees.map((a) => (
+                  <label key={a.user_id} className="row" style={{ gap: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={reworkWho.includes(a.user_id)}
+                      onChange={(e) => setReworkWho((w) => (e.target.checked ? [...w, a.user_id] : w.filter((x) => x !== a.user_id)))}
+                    />
+                    {a.name}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
 
       {confirmDelete ? (
         <Modal

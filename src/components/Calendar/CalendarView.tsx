@@ -37,6 +37,7 @@ type Mode = 'month' | 'week' | 'agenda';
 const STATUS_KEY: Record<string, string> = {
   pending: 'pend',
   in_progress: 'prog',
+  in_review: 'rev',
   completed: 'done',
   overdue: 'over',
 };

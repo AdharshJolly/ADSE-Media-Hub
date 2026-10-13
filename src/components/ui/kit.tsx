@@ -58,11 +58,12 @@ export function Icon({ name, size, style }: { name: IconName; size?: number; sty
 }
 
 // ---------- status, priority, people ----------
-export type StatusKey = 'pending' | 'in_progress' | 'completed' | 'overdue' | 'approved' | 'rejected' | 'inactive' | 'active';
+export type StatusKey = 'pending' | 'in_progress' | 'in_review' | 'completed' | 'overdue' | 'approved' | 'rejected' | 'inactive' | 'active';
 
 const CHIP: Record<StatusKey, [string, string]> = {
   pending: ['c-pend', 'Pending'],
   in_progress: ['c-prog', 'In progress'],
+  in_review: ['c-rev', 'In review'],
   completed: ['c-done', 'Completed'],
   overdue: ['c-over', 'Overdue'],
   approved: ['c-appr', 'Approved'],
@@ -74,6 +75,18 @@ const CHIP: Record<StatusKey, [string, string]> = {
 export function Chip({ status, label }: { status: StatusKey | string; label?: string }) {
   const c = CHIP[status as StatusKey] ?? ['c-neutral', status];
   return <span className={`chip ${c[0]}`}>{label ?? c[1]}</span>;
+}
+
+// Overdue, or still in review past its deadline (review tasks keep their status).
+export function isLate(t: { status: string; deadline: string }) {
+  return t.status === 'overdue' || (t.status === 'in_review' && new Date(t.deadline).getTime() < Date.now());
+}
+
+// "Alex" or "Alex +2" for tasks with several people on them.
+export function assigneeLabel(t: { assignee?: { name?: string } | null; assignees?: { name: string; is_lead: boolean }[] }) {
+  const lead = t.assignees?.find((a) => a.is_lead)?.name ?? t.assignee?.name ?? '';
+  const extra = (t.assignees?.length ?? 0) - 1;
+  return extra > 0 ? `${lead} +${extra}` : lead;
 }
 
 export function Pri({ level }: { level: string }) {

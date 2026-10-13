@@ -14,6 +14,9 @@ const actionConfig: Record<string, { icon: IconName; label: string }> = {
   created: { icon: 'plus', label: 'created this task' },
   status_changed: { icon: 'right', label: 'changed status' },
   assigned: { icon: 'user', label: 'assigned a team member' },
+  submitted: { icon: 'check', label: 'submitted work for review' },
+  approved: { icon: 'check', label: 'approved this task' },
+  rework_requested: { icon: 'right', label: 'requested rework' },
   commented: { icon: 'msg', label: 'added a comment' },
   link_added: { icon: 'link', label: 'added a link' },
 };
@@ -23,6 +26,8 @@ function formatDetails(action: string, details: Record<string, unknown> | null):
   switch (action) {
     case 'status_changed':
       return `from "${details.from}" to "${details.to}"`;
+    case 'rework_requested':
+      return details.note ? `(${String(details.note).slice(0, 120)})` : '';
     case 'assigned':
       return `to ${details.assignee_name || 'team member'}`;
     case 'link_added':

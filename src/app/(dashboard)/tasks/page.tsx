@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useDebounce } from '@/hooks/useDebounce';
 import { TableSkeleton, CardSkeleton } from '@/components/ui/skeleton';
 import KanbanBoard from '@/components/Kanban/KanbanBoard';
-import { Avatar, Chip, Empty, Icon, Modal, PageHead, Pri, TypeTag, fmtDate } from '@/components/ui/kit';
+import { Avatar, Chip, Empty, Icon, Modal, PageHead, Pri, TypeTag, assigneeLabel, fmtDate, isLate } from '@/components/ui/kit';
 import type { Task } from '@/types/database';
 
 interface TeamMember {
@@ -21,6 +21,7 @@ const TABS = [
   { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending' },
   { id: 'in_progress', label: 'In progress' },
+  { id: 'in_review', label: 'In review' },
   { id: 'completed', label: 'Completed' },
   { id: 'overdue', label: 'Overdue' },
 ];
@@ -32,7 +33,7 @@ function TasksView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(params.get('status') || '');
   const [searchQuery, setSearchQuery] = useState(q);
   const [tab, setTab] = useState('all');
   const [page, setPage] = useState(1);
@@ -83,7 +84,33 @@ function TasksView() {
 
   useEffect(() => setPage(1), [statusFilter, debouncedSearch, view]);
 
+  const handleSubmitForReview = async (taskId: string) => {
+    setBusyId(taskId);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'submit' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.status === 'in_review' ? 'Submitted for review' : 'Submitted. Waiting on the other assignees');
+        fetchTasks();
+      } else {
+        toast.error(data.error || 'Failed to submit');
+      }
+    } catch {
+      toast.error('Failed to submit');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleStatusUpdate = async (taskId: string, newStatus: string) => {
+    if (newStatus !== 'pending' && newStatus !== 'in_progress') {
+      toast.error('Open the task to submit it, approve it or request rework');
+      return;
+    }
     setBusyId(taskId);
     const original = [...tasks];
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus as Task['status'] } : t)));
@@ -163,7 +190,8 @@ function TasksView() {
   };
 
   const needsAssignment = (t: Task) => canManageTasks && t.assigned_to === t.created_by && t.status === 'pending';
-  const mine = (t: Task) => user && t.assigned_to === user.id;
+  const mine = (t: Task) => !!user && (t.assignees?.some((a) => a.user_id === user.id) ?? t.assigned_to === user.id);
+  const myState = (t: Task) => t.assignees?.find((a) => a.user_id === user?.id)?.state;
 
   const counts = (id: string) => (id === 'all' ? tasks.length : tasks.filter((t) => t.status === id).length);
   const shown = isTeam ? (tab === 'all' ? tasks : tasks.filter((t) => t.status === tab)) : tasks;
@@ -196,6 +224,7 @@ function TasksView() {
             <option value="">All status</option>
             <option value="pending">Pending</option>
             <option value="in_progress">In progress</option>
+            <option value="in_review">In review</option>
             <option value="completed">Completed</option>
             <option value="overdue">Overdue</option>
           </select>
@@ -237,7 +266,7 @@ function TasksView() {
       ) : isTeam ? (
         <div className="grid g2">
           {shown.map((t) => {
-            const late = t.status === 'overdue';
+            const late = isLate(t);
             return (
               <div key={t.id} className="card card-p col" style={{ gap: 12 }}>
                 <div className="sp" style={{ alignItems: 'flex-start', gap: 12 }}>
@@ -255,15 +284,15 @@ function TasksView() {
                 <div className="sp">
                   <Link href={`/tasks/${t.id}`} className="row t-xs muted" style={{ gap: 6 }}>
                     <Icon name="msg" size={14} />
-                    {t.assignee?.name ? t.assignee.name : 'Details'}
+                    {assigneeLabel(t) || 'Details'}
                   </Link>
                   {mine(t) && t.status === 'pending' ? (
                     <button type="button" className="btn btn-sm btn-primary" disabled={busyId === t.id} onClick={() => handleStatusUpdate(t.id, 'in_progress')}>
                       Start task
                     </button>
-                  ) : mine(t) && (t.status === 'in_progress' || t.status === 'overdue') ? (
-                    <button type="button" className="btn btn-sm btn-ok" disabled={busyId === t.id} onClick={() => handleStatusUpdate(t.id, 'completed')}>
-                      <Icon name="check" size={14} /> Mark complete
+                  ) : mine(t) && (t.status === 'in_progress' || t.status === 'overdue') && myState(t) !== 'submitted' ? (
+                    <button type="button" className="btn btn-sm btn-ok" disabled={busyId === t.id} onClick={() => handleSubmitForReview(t.id)}>
+                      <Icon name="check" size={14} /> Submit for review
                     </button>
                   ) : (
                     <Link href={`/tasks/${t.id}`} className="btn btn-sm btn-ghost">View</Link>
@@ -294,7 +323,7 @@ function TasksView() {
                 </div>
                 <div><Chip status={t.status} /></div>
                 <div><Pri level={t.priority} /></div>
-                <div className="t-sm" style={{ color: t.status === 'overdue' ? 'var(--s-over-fg)' : undefined }}>{fmtDate(t.deadline)}</div>
+                <div className="t-sm" style={{ color: isLate(t) ? 'var(--s-over-fg)' : undefined }}>{fmtDate(t.deadline)}</div>
                 <div>
                   {needsAssignment(t) ? (
                     <select className="input sel" disabled={busyId === t.id} defaultValue="" onChange={(e) => handleAssign(t.id, e.target.value)}>
@@ -306,7 +335,7 @@ function TasksView() {
                   ) : (
                     <span className="row" style={{ gap: 8 }}>
                       <Avatar name={t.assignee?.name} size="sm" />
-                      <span className="t-sm trunc">{t.assignee?.name || '—'}</span>
+                      <span className="t-sm trunc">{assigneeLabel(t) || '—'}</span>
                     </span>
                   )}
                 </div>

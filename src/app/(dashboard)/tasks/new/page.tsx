@@ -15,6 +15,7 @@ interface TeamMember {
 export default function NewTaskPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [formData, setFormData] = useState({
     title: '',
@@ -22,7 +23,6 @@ export default function NewTaskPage() {
     mediaType: '',
     priority: 'medium',
     deadline: '',
-    assignedTo: '',
     notes: '',
   });
 
@@ -39,12 +39,16 @@ export default function NewTaskPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (assigneeIds.length === 0) {
+      toast.error('Pick at least one team member');
+      return;
+    }
     setLoading(true);
     try {
       const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, deadline: new Date(formData.deadline).toISOString() }),
+        body: JSON.stringify({ ...formData, assigneeIds, deadline: new Date(formData.deadline).toISOString() }),
       });
       const data = await response.json();
       if (data.success) {
@@ -100,13 +104,20 @@ export default function NewTaskPage() {
         </div>
         <div className="grid g2">
           <div className="field">
-            <label htmlFor="assignedTo">Assign to</label>
-            <select id="assignedTo" className="input sel" name="assignedTo" value={formData.assignedTo} onChange={handleChange} required>
-              <option value="">Select team member</option>
+            <label>Assign to</label>
+            <div className="col" style={{ gap: 8 }}>
               {teamMembers.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <label key={m.id} className="row" style={{ gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={assigneeIds.includes(m.id)}
+                    onChange={(e) => setAssigneeIds((a) => (e.target.checked ? [...a, m.id] : a.filter((x) => x !== m.id)))}
+                  />
+                  {m.name}
+                </label>
               ))}
-            </select>
+            </div>
+            {assigneeIds.length > 1 ? <span className="hint">First person ticked is the lead.</span> : null}
             {teamMembers.length === 0 ? <span className="hint">No team members available</span> : null}
           </div>
           <div className="field">

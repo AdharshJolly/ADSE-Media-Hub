@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Avatar, Icon, Pri, TypeTag, fmtDate } from '@/components/ui/kit';
+import { Avatar, Icon, Pri, TypeTag, assigneeLabel, fmtDate, isLate } from '@/components/ui/kit';
 import type { Task } from '@/types/database';
 
 interface KanbanBoardProps {
@@ -14,6 +14,7 @@ interface KanbanBoardProps {
 const columns = [
   { id: 'pending', title: 'Pending', dot: 'pend' },
   { id: 'in_progress', title: 'In progress', dot: 'prog' },
+  { id: 'in_review', title: 'In review', dot: 'rev' },
   { id: 'completed', title: 'Completed', dot: 'done' },
   { id: 'overdue', title: 'Overdue', dot: 'over' },
 ];
@@ -56,7 +57,7 @@ export default function KanbanBoard({ tasks, onStatusChange, canEdit }: KanbanBo
             </header>
             {items.map((t) => {
               const unassigned = t.assigned_to === t.created_by && t.status === 'pending';
-              const late = t.status === 'overdue';
+              const late = isLate(t);
               return (
                 <div
                   key={t.id}
@@ -82,11 +83,11 @@ export default function KanbanBoard({ tasks, onStatusChange, canEdit }: KanbanBo
                   <div className="sp">
                     <span className="row t-xs" style={{ gap: 6, color: late ? 'var(--s-over-fg)' : 'var(--muted)' }}>
                       <Icon name="clock" size={14} />
-                      {late ? 'Was ' : t.status === 'completed' ? 'Done ' : ''}
+                      {t.status === 'overdue' ? 'Was ' : t.status === 'completed' ? 'Done ' : ''}
                       {fmtDate(t.status === 'completed' ? t.completion_date || t.deadline : t.deadline, t.status !== 'completed')}
                     </span>
                     <span className="row" style={{ gap: 6 }}>
-                      <span className="t-xs muted">{unassigned ? 'Unassigned' : t.assignee?.name || ''}</span>
+                      <span className="t-xs muted">{unassigned ? 'Unassigned' : assigneeLabel(t)}</span>
                       {unassigned ? <span className="av sm">+</span> : <Avatar name={t.assignee?.name || '?'} size="sm" />}
                     </span>
                   </div>

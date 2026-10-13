@@ -21,6 +21,7 @@ body{margin:0}
   --s-done-bg:#E1F5EA; --s-done-fg:#0A6236; --s-done-dot:#14A058;
   --s-over-bg:#FDE7E7; --s-over-fg:#9E1D1D; --s-over-dot:#DC3B3B;
   --s-appr-bg:#DFF4F5; --s-appr-fg:#0A5F63; --s-appr-dot:#12A3A8;
+  --s-rev-bg:#F0E8FF; --s-rev-fg:#5B2CB8; --s-rev-dot:#7C4DDB;
   --scrim:rgba(11,27,51,.42);
   color-scheme:light;
 }
@@ -43,6 +44,7 @@ html.dark{
   --s-done-bg:rgba(20,160,88,.17); --s-done-fg:#62D69C; --s-done-dot:#2BC37A;
   --s-over-bg:rgba(220,59,59,.18); --s-over-fg:#FF9494; --s-over-dot:#F06060;
   --s-appr-bg:rgba(18,163,168,.18); --s-appr-fg:#62D8DC; --s-appr-dot:#2BC3C8;
+  --s-rev-bg:rgba(124,77,219,.2); --s-rev-fg:#C4A8FF; --s-rev-dot:#9B73F0;
   --scrim:rgba(2,5,12,.64);
 }
 h1,h2,h3,p{margin:0}
@@ -171,6 +173,7 @@ textarea.input{height:auto;min-height:96px;padding:10px 12px;resize:none;display
 .c-prog{background:var(--s-prog-bg);color:var(--s-prog-fg)} .c-prog::before{background:var(--s-prog-dot)}
 .c-done{background:var(--s-done-bg);color:var(--s-done-fg)} .c-done::before{background:var(--s-done-dot)}
 .c-over{background:var(--s-over-bg);color:var(--s-over-fg)} .c-over::before{background:var(--s-over-dot)}
+.c-rev{background:var(--s-rev-bg);color:var(--s-rev-fg)} .c-rev::before{background:var(--s-rev-dot)}
 .c-appr{background:var(--s-appr-bg);color:var(--s-appr-fg)} .c-appr::before{background:var(--s-appr-dot)}
 .c-neutral{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)} .c-neutral::before{background:var(--faint)}
 .tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:500;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
@@ -196,7 +199,7 @@ textarea.input{height:auto;min-height:96px;padding:10px 12px;resize:none;display
 .li .ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary-text);flex:none}
 
 /* ---------- kanban ---------- */
-.kan{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}
+.kan{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;align-items:start}
 .kcol{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:10px}
 .kcol>header{display:flex;align-items:center;justify-content:space-between;padding:4px 6px;font-weight:600}
 .kcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:var(--sh-2);display:flex;flex-direction:column;gap:10px}

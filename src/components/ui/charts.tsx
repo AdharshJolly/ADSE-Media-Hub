@@ -46,6 +46,7 @@ export function taskSegments(s: DashboardStats['taskStats']): Seg[] {
   return [
     { label: 'Completed', value: s?.completed || 0, color: 'var(--s-done-dot)' },
     { label: 'In progress', value: s?.in_progress || 0, color: 'var(--s-prog-dot)' },
+    { label: 'In review', value: s?.in_review || 0, color: 'var(--s-rev-dot)' },
     { label: 'Pending', value: s?.pending || 0, color: 'var(--s-pend-dot)' },
     { label: 'Overdue', value: s?.overdue || 0, color: 'var(--s-over-dot)' },
   ];
