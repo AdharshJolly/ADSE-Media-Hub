@@ -221,43 +221,48 @@ export async function sendTaskOverdueEmail(
   taskTitle: string,
   deadline: string,
   daysOverdue: number,
-  coordinatorEmail?: string,
 ): Promise<boolean> {
-  const results = await Promise.all([
-    sendEmail({
-      to: teamMemberEmail,
-      subject: `OVERDUE: Task Past Deadline - ${taskTitle}`,
-      html: `
-        <h2>Task Overdue Alert</h2>
-        <p>Hi ${escapeHtml(teamMemberName)},</p>
-        <p>The following task is now overdue:</p>
-        <ul>
-          <li><strong>Title:</strong> ${escapeHtml(taskTitle)}</li>
-          <li><strong>Original Deadline:</strong> ${escapeHtml(deadline)}</li>
-          <li><strong>Days Overdue:</strong> ${daysOverdue}</li>
-        </ul>
-        <p>Please complete this task immediately or contact the coordinator.</p>
-        <a href="${APP_URL}/tasks" style="display:inline-block;padding:10px 20px;background:#dc2626;color:white;text-decoration:none;border-radius:5px;">View Task</a>
-      `,
-    }),
-    coordinatorEmail
-      ? sendEmail({
-          to: coordinatorEmail,
-          subject: `OVERDUE Alert: ${taskTitle}`,
-          html: `
-            <h2>Task Overdue Alert</h2>
-            <p>A task is now overdue:</p>
-            <ul>
-              <li><strong>Title:</strong> ${escapeHtml(taskTitle)}</li>
-              <li><strong>Assigned to:</strong> ${escapeHtml(teamMemberName)}</li>
-              <li><strong>Days Overdue:</strong> ${daysOverdue}</li>
-            </ul>
-            <a href="${APP_URL}/tasks" style="display:inline-block;padding:10px 20px;background:#dc2626;color:white;text-decoration:none;border-radius:5px;">View Task</a>
-          `,
-        })
-      : Promise.resolve(true),
-  ]);
-  return results.every((r) => r);
+  return sendEmail({
+    to: teamMemberEmail,
+    subject: `OVERDUE: Task Past Deadline - ${taskTitle}`,
+    html: `
+      <h2>Task Overdue Alert</h2>
+      <p>Hi ${escapeHtml(teamMemberName)},</p>
+      <p>The following task is now overdue:</p>
+      <ul>
+        <li><strong>Title:</strong> ${escapeHtml(taskTitle)}</li>
+        <li><strong>Original Deadline:</strong> ${escapeHtml(deadline)}</li>
+        <li><strong>Days Overdue:</strong> ${daysOverdue}</li>
+      </ul>
+      <p>Please complete this task immediately or contact the coordinator.</p>
+      <a href="${APP_URL}/tasks" style="display:inline-block;padding:10px 20px;background:#dc2626;color:white;text-decoration:none;border-radius:5px;">View Task</a>
+    `,
+  });
+}
+
+// Heads-up for coordinators and student heads when a task slips past its deadline.
+export async function sendTaskOverdueStaffEmail(
+  staffEmail: string,
+  taskTitle: string,
+  assigneeNames: string,
+  deadline: string,
+  daysOverdue: number,
+): Promise<boolean> {
+  return sendEmail({
+    to: staffEmail,
+    subject: `OVERDUE Alert: ${taskTitle}`,
+    html: `
+      <h2>Task Overdue Alert</h2>
+      <p>A task is now overdue:</p>
+      <ul>
+        <li><strong>Title:</strong> ${escapeHtml(taskTitle)}</li>
+        <li><strong>Assigned to:</strong> ${escapeHtml(assigneeNames)}</li>
+        <li><strong>Original Deadline:</strong> ${escapeHtml(deadline)}</li>
+        <li><strong>Days Overdue:</strong> ${daysOverdue}</li>
+      </ul>
+      <a href="${APP_URL}/tasks" style="display:inline-block;padding:10px 20px;background:#dc2626;color:white;text-decoration:none;border-radius:5px;">View Task</a>
+    `,
+  });
 }
 
 export async function sendTaskCompletedEmail(

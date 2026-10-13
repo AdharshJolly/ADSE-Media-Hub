@@ -178,7 +178,8 @@ export default function TaskDetailPage() {
   const me = assignees.find((a) => a.user_id === currentUserId);
   const isMine = !!user && !unassigned && (me ? true : assignees.length === 0 && task.assigned_to === currentUserId);
   const late = isLate(task);
-  const inReview = task.status === 'in_review';
+  // A submitted task that went overdue is still waiting for a reviewer.
+  const inReview = task.status === 'in_review' || (task.status === 'overdue' && assignees.length > 0 && assignees.every((a) => a.state === 'submitted'));
   const lockedAssignees = inReview || task.status === 'completed';
   const waiting = assignees.filter((a) => a.state !== 'submitted').length;
 

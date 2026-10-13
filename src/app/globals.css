@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ADSE Hub design system. One stylesheet drives every screen.
+/* ADSE Media Hub design system. One stylesheet drives every screen.
    Theme:  .app.light | .app.dark     Device: .app.desktop | .app.mobile */
 
 *,*::before,*::after{box-sizing:border-box}

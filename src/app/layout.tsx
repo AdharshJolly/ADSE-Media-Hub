@@ -9,7 +9,7 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
-  title: "ADSE Hub",
+  title: "ADSE Media Hub",
   description: "Task management and collaboration platform for ADSE Media Team",
 };
 

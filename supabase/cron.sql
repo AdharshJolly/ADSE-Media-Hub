@@ -8,14 +8,14 @@
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- Mark tasks overdue every 15 minutes. Tasks in review keep their status (the UI flags them late).
+-- Mark tasks overdue every 15 minutes (tasks waiting for review included).
 select cron.unschedule(jobid) from cron.job where jobname = 'adse-mark-overdue';
 select cron.schedule(
   'adse-mark-overdue',
   '*/15 * * * *',
   $$ update public.tasks
      set status = 'overdue'
-     where status in ('pending', 'in_progress') and deadline < now() $$
+     where status in ('pending', 'in_progress', 'in_review') and deadline < now() $$
 );
 
 -- Deadline reminders (7/3/1 days) + overdue alerts, daily at 03:30 UTC (09:00 IST).

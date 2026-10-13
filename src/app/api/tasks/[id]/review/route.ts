@@ -57,14 +57,18 @@ export async function POST(
 
     // approve / rework: reviewers only
     if (!isStaff) return fail('Permission denied', 403);
-    if (task.status !== 'in_review') return fail('Task is not waiting for review', 400);
+    // A submitted task that passes its deadline flips to overdue but stays reviewable.
+    const awaitingReview =
+      task.status === 'in_review' ||
+      (task.status === 'overdue' && assignees.length > 0 && assignees.every((a) => a.state === 'submitted'));
+    if (!awaitingReview) return fail('Task is not waiting for review', 400);
 
     if (data.action === 'approve') {
       const { error } = await supabase
         .from('tasks')
         .update({ status: 'completed', completion_date: new Date().toISOString() })
         .eq('id', taskId)
-        .eq('status', 'in_review'); // lose the race gracefully if two reviewers click at once
+        .in('status', ['in_review', 'overdue']); // lose the race gracefully if two reviewers click at once
       if (error) return fail('Failed to approve', 500);
       await logTaskActivity(taskId, session.userId, 'approved', {});
 

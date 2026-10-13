@@ -11,7 +11,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('push', (event) => {
   const data = event.data?.json() || {
-    title: 'ADSE Hub',
+    title: 'ADSE Media Hub',
     body: 'You have a new notification',
     icon: '/favicon.ico',
     badge: '/favicon.ico',

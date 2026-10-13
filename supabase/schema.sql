@@ -1,4 +1,4 @@
--- ADSE Hub Database Schema for Supabase
+-- ADSE Media Hub Database Schema for Supabase
 -- Run this in the Supabase SQL Editor to set up your database.
 -- To wipe everything first, run supabase/reset.sql, then this file.
 

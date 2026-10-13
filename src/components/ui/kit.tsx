@@ -77,7 +77,7 @@ export function Chip({ status, label }: { status: StatusKey | string; label?: st
   return <span className={`chip ${c[0]}`}>{label ?? c[1]}</span>;
 }
 
-// Overdue, or still in review past its deadline (review tasks keep their status).
+// Overdue, or still in review past its deadline.
 export function isLate(t: { status: string; deadline: string }) {
   return t.status === 'overdue' || (t.status === 'in_review' && new Date(t.deadline).getTime() < Date.now());
 }

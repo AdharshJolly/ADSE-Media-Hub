@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
-import { Avatar, Icon, ROLE_LABEL, type IconName } from '@/components/ui/kit';
+import { Avatar, Icon, Modal, ROLE_LABEL, type IconName } from '@/components/ui/kit';
 import BrandLogo from '@/components/ui/BrandLogo';
 import GlobalSearch from './GlobalSearch';
 
@@ -55,6 +55,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [unread, setUnread] = useState(0);
   const [pending, setPending] = useState(0);
   const [drawer, setDrawer] = useState(false);
+  const [confirmOthers, setConfirmOthers] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -153,11 +155,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <button
         type="button"
         className="sb-out"
-        onClick={async () => {
-          if (!window.confirm('Sign out of all other devices? This browser stays signed in.')) return;
-          if (await logoutOthers()) toast.success('Signed out of all other devices');
-          else toast.error('Could not sign out other devices');
-        }}
+        onClick={() => setConfirmOthers(true)}
         aria-label="Sign out other devices"
         title="Sign out other devices"
         style={{ color: 'var(--muted)', display: 'grid', placeItems: 'center' }}
@@ -242,6 +240,35 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {userBlock}
           </aside>
         </div>
+      ) : null}
+
+      {confirmOthers ? (
+        <Modal
+          title="Sign out other devices?"
+          onClose={() => !signingOut && setConfirmOthers(false)}
+          footer={
+            <>
+              <button type="button" className="btn" disabled={signingOut} onClick={() => setConfirmOthers(false)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={signingOut}
+                onClick={async () => {
+                  setSigningOut(true);
+                  const ok = await logoutOthers();
+                  setSigningOut(false);
+                  setConfirmOthers(false);
+                  if (ok) toast.success('Signed out of all other devices');
+                  else toast.error('Could not sign out other devices');
+                }}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out other devices'}
+              </button>
+            </>
+          }
+        >
+          <p className="t-sm muted">Every other browser and device signed in to your account will be signed out. This browser stays signed in.</p>
+        </Modal>
       ) : null}
     </div>
   );
