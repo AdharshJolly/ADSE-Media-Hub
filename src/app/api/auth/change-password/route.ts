@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateToken, getSession, hashPassword, setSession, verifyPassword } from '@/lib/auth';
-import { getUserById, updateUser } from '@/lib/db';
+import { getUserById, updateUserRevokingSessions } from '@/lib/db';
 import { fail, parseBody } from '@/lib/api';
 import { changePasswordSchema } from '@/lib/validation';
 import { isRateLimited } from '@/lib/password';
@@ -28,13 +28,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Bumping token_version signs out every other session; this browser gets a fresh cookie.
-    const tokenVersion = (user.token_version ?? 0) + 1;
-    const ok = await updateUser(user.id, {
+    const tokenVersion = await updateUserRevokingSessions(user.id, {
       password_hash: await hashPassword(data.newPassword),
       must_change_password: false,
-      token_version: tokenVersion,
     });
-    if (!ok) return fail('Failed to update password', 500);
+    if (tokenVersion === null) return fail('Failed to update password', 500);
 
     await setSession(generateToken(user.id, tokenVersion, session.remember), session.remember);
 

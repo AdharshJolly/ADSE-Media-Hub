@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hashPassword } from '@/lib/auth';
-import { getUserById, updateUser } from '@/lib/db';
+import { getUserById, updateUserRevokingSessions } from '@/lib/db';
 import { clientIp, fail, parseBody } from '@/lib/api';
 import { resetPasswordSchema } from '@/lib/validation';
 import { consumeResetToken, isRateLimited } from '@/lib/password';
@@ -22,12 +22,11 @@ export async function POST(request: NextRequest) {
       return fail('This reset link is invalid or has expired. Request a new one.', 400);
     }
 
-    const ok = await updateUser(user.id, {
+    const version = await updateUserRevokingSessions(user.id, {
       password_hash: await hashPassword(data.newPassword),
       must_change_password: false,
-      token_version: (user.token_version ?? 0) + 1,
     });
-    if (!ok) return fail('Failed to reset password', 500);
+    if (version === null) return fail('Failed to reset password', 500);
 
     return NextResponse.json({ success: true, message: 'Password updated. You can sign in now.' });
   } catch (error) {

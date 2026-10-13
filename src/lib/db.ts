@@ -86,6 +86,30 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<bo
   return !error;
 }
 
+// Applies `updates` and increments token_version (revoking every existing session) as a
+// compare-and-set on the version it read, so concurrent calls can't overwrite each other's
+// bump. Returns the new version, or null if it kept losing the race or the user is gone.
+export async function updateUserRevokingSessions(id: string, updates: Partial<User> = {}): Promise<number | null> {
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: current } = await supabase.from('users').select('token_version').eq('id', id).maybeSingle();
+      if (!current) return null;
+      const next = (current.token_version ?? 0) + 1;
+      const { data, error } = await supabase
+        .from('users')
+        .update({ ...updates, token_version: next })
+        .eq('id', id)
+        .eq('token_version', current.token_version ?? 0)
+        .select('id');
+      if (error) return null;
+      if (data && data.length > 0) return next;
+    }
+    return null;
+  } finally {
+    sessionUserCache.delete(id);
+  }
+}
+
 // Every authenticated request needs the user row, which costs a database round trip.
 // Cache it briefly per server instance. A role change or deactivation made on another
 // instance can take up to SESSION_USER_TTL_MS to apply. Users who must change their
