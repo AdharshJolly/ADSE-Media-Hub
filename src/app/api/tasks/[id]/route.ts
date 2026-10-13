@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTaskById, getTaskAssignees } from '@/lib/db';
+import { getTaskById, getTaskAssignees, bustStats } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { authenticate, fail, getAccessibleTask, STAFF_ROLES } from '@/lib/api';
 
@@ -41,6 +41,7 @@ export async function DELETE(
       return fail('Failed to delete task', 500);
     }
 
+    bustStats();
     return NextResponse.json({ success: true, message: 'Task deleted successfully' });
   } catch (error) {
     console.error('Delete task error:', error);

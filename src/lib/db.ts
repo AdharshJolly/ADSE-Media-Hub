@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { sendPushToUser } from './push';
 import { taskSearchFilter } from './search';
 import { after } from 'next/server';
+import { unstable_cache, revalidateTag } from 'next/cache';
 export { supabase };
 import type {
   User,
@@ -67,7 +68,7 @@ export async function getTeamMembers(): Promise<User[]> {
   return data as User[];
 }
 
-export async function createUser(user: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User | null> {
+async function createUserRaw(user: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User | null> {
   const { data, error } = await supabase
     .from('users')
     .insert(user)
@@ -78,7 +79,7 @@ export async function createUser(user: Omit<User, 'id' | 'created_at' | 'updated
   return data as User;
 }
 
-export async function updateUser(id: string, updates: Partial<User>): Promise<boolean> {
+async function updateUserRaw(id: string, updates: Partial<User>): Promise<boolean> {
   const { error } = await supabase
     .from('users')
     .update(updates)
@@ -88,7 +89,7 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<bo
   return !error;
 }
 
-export async function deleteUser(id: string): Promise<boolean> {
+async function deleteUserRaw(id: string): Promise<boolean> {
   const { error } = await supabase.from('users').delete().eq('id', id);
   sessionUserCache.delete(id);
   return !error;
@@ -97,7 +98,7 @@ export async function deleteUser(id: string): Promise<boolean> {
 // Applies `updates` and increments token_version (revoking every existing session) as a
 // compare-and-set on the version it read, so concurrent calls can't overwrite each other's
 // bump. Returns the new version, or null if it kept losing the race or the user is gone.
-export async function updateUserRevokingSessions(id: string, updates: Partial<User> = {}): Promise<number | null> {
+async function updateUserRevokingSessionsRaw(id: string, updates: Partial<User> = {}): Promise<number | null> {
   try {
     for (let attempt = 0; attempt < 5; attempt++) {
       const { data: current } = await supabase.from('users').select('token_version').eq('id', id).maybeSingle();
@@ -205,7 +206,7 @@ export async function getRequestById(id: string): Promise<Request | null> {
   return data as Request;
 }
 
-export async function createRequest(request: Omit<Request, 'id' | 'created_at' | 'updated_at'>): Promise<Request | null> {
+async function createRequestRaw(request: Omit<Request, 'id' | 'created_at' | 'updated_at'>): Promise<Request | null> {
   const { data, error } = await supabase
     .from('requests')
     .insert(request)
@@ -216,7 +217,7 @@ export async function createRequest(request: Omit<Request, 'id' | 'created_at' |
   return data as Request;
 }
 
-export async function updateRequest(id: string, updates: Partial<Request>): Promise<boolean> {
+async function updateRequestRaw(id: string, updates: Partial<Request>): Promise<boolean> {
   const { error } = await supabase
     .from('requests')
     .update(updates)
@@ -362,7 +363,7 @@ export async function getTaskAssignees(taskId: string): Promise<TaskAssignee[]> 
 }
 
 // Replaces the assignee set. The first id becomes the lead. People who stay keep their state.
-export async function setTaskAssignees(taskId: string, userIds: string[]): Promise<boolean> {
+async function setTaskAssigneesRaw(taskId: string, userIds: string[]): Promise<boolean> {
   const ids = [...new Set(userIds)];
   const { data: existing } = await supabase.from('task_assignees').select('user_id').eq('task_id', taskId);
   const have = new Set((existing ?? []).map((r) => r.user_id as string));
@@ -379,7 +380,7 @@ export async function setTaskAssignees(taskId: string, userIds: string[]): Promi
   return updateTask(taskId, { assigned_to: ids[0] });
 }
 
-export async function setAssigneeStates(
+async function setAssigneeStatesRaw(
   taskId: string,
   userIds: string[],
   state: AssigneeState,
@@ -416,7 +417,7 @@ export async function getTaskById(id: string): Promise<Task | null> {
   return data as Task;
 }
 
-export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<Task | null> {
+async function createTaskRaw(task: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<Task | null> {
   const { data, error } = await supabase
     .from('tasks')
     .insert(task)
@@ -427,7 +428,7 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'updated
   return data as Task;
 }
 
-export async function updateTask(id: string, updates: Partial<Task>): Promise<boolean> {
+async function updateTaskRaw(id: string, updates: Partial<Task>): Promise<boolean> {
   const { error } = await supabase
     .from('tasks')
     .update(updates)
@@ -520,18 +521,47 @@ export async function createNotification(notification: Omit<Notification, 'id' |
 
 // ==================== Dashboard ====================
 
-export async function getDashboardStats(): Promise<DashboardStats> {
-  // One round trip; counting happens in Postgres (see get_dashboard_stats in schema.sql).
-  const { data, error } = await supabase.rpc('get_dashboard_stats');
-  if (error || !data) throw error ?? new Error('get_dashboard_stats returned no data');
-  return data as DashboardStats;
+// Stats and workload are the same for every staff user, so they're cached across requests
+// (and serverless instances) for a short time. Every write below busts them immediately.
+const STATS_TAG = 'stats';
+const STATS_TTL_S = 30;
+
+export function bustStats() {
+  try {
+    revalidateTag(STATS_TAG, { expire: 0 });
+  } catch {
+    // outside a request scope (scripts); the TTL still applies
+  }
 }
 
-export async function getTeamWorkload(): Promise<Workload[]> {
-  const { data, error } = await supabase.rpc('get_team_workload');
-  if (error) throw error;
-  return (data ?? []) as Workload[];
+function bustAfter<A extends unknown[], R>(fn: (...args: A) => Promise<R>) {
+  return async (...args: A): Promise<R> => {
+    const result = await fn(...args);
+    bustStats();
+    return result;
+  };
 }
+
+// One round trip; counting happens in Postgres (see get_dashboard_stats in schema.sql).
+export const getDashboardStats = unstable_cache(
+  async (): Promise<DashboardStats> => {
+    const { data, error } = await supabase.rpc('get_dashboard_stats');
+    if (error || !data) throw error ?? new Error('get_dashboard_stats returned no data');
+    return data as DashboardStats;
+  },
+  ['dashboard-stats'],
+  { tags: [STATS_TAG], revalidate: STATS_TTL_S },
+);
+
+export const getTeamWorkload = unstable_cache(
+  async (): Promise<Workload[]> => {
+    const { data, error } = await supabase.rpc('get_team_workload');
+    if (error) throw error;
+    return (data ?? []) as Workload[];
+  },
+  ['team-workload'],
+  { tags: [STATS_TAG], revalidate: STATS_TTL_S },
+);
 
 // ==================== Task Comments ====================
 
@@ -637,3 +667,15 @@ export async function deleteTaskLink(linkId: string): Promise<boolean> {
 
   return !error;
 }
+
+// Writes that change the numbers on the dashboard
+export const createUser = bustAfter(createUserRaw);
+export const updateUser = bustAfter(updateUserRaw);
+export const deleteUser = bustAfter(deleteUserRaw);
+export const updateUserRevokingSessions = bustAfter(updateUserRevokingSessionsRaw);
+export const createRequest = bustAfter(createRequestRaw);
+export const updateRequest = bustAfter(updateRequestRaw);
+export const setTaskAssignees = bustAfter(setTaskAssigneesRaw);
+export const setAssigneeStates = bustAfter(setAssigneeStatesRaw);
+export const createTask = bustAfter(createTaskRaw);
+export const updateTask = bustAfter(updateTaskRaw);

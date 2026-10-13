@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createUser, getAllUsers, getUserByEmail } from '@/lib/db';
+import { createUser, getAllUsers, getUserByEmail, bustStats } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 import { authenticate, fail, parseBody, STAFF_ROLES } from '@/lib/api';
 import { createUserSchema } from '@/lib/validation';
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
     if (!sent) {
       // Nobody knows the password, so don't leave an unusable account behind.
       await supabase.from('users').delete().eq('id', user.id);
+      bustStats();
       return fail('Could not send the welcome email, so the user was not created. Check the email settings and try again.', 502);
     }
 

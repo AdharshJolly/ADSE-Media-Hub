@@ -10,6 +10,7 @@ import {
   updateTask,
   logTaskActivity,
   createNotification,
+  bustStats,
 } from '@/lib/db';
 import { authenticate, fail, parseBody, STAFF_ROLES } from '@/lib/api';
 import { reviewActionSchema } from '@/lib/validation';
@@ -70,6 +71,7 @@ export async function POST(
         .eq('id', taskId)
         .in('status', ['in_review', 'overdue']); // lose the race gracefully if two reviewers click at once
       if (error) return fail('Failed to approve', 500);
+      bustStats();
       await logTaskActivity(taskId, session.userId, 'approved', {});
 
       // Close the originating request once none of its tasks are still open
