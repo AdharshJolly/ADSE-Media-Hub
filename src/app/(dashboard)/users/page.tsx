@@ -21,7 +21,7 @@ interface User {
   created_at: string;
 }
 
-const COLS = 'minmax(0,2.4fr) minmax(0,1.1fr) minmax(0,1.4fr) minmax(0,1fr) 130px';
+const COLS = 'minmax(0,2.4fr) minmax(0,1.1fr) minmax(0,1.4fr) minmax(0,1fr) 150px';
 
 const FILTERS: Array<{ key: string; label: string }> = [
   { key: 'all', label: 'All' },
@@ -52,6 +52,13 @@ function UsersInner() {
   const [newUser, setNewUser] = useState({ name: '', email: '', role: 'team_member' });
   const [confirmUser, setConfirmUser] = useState<User | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [renameUser, setRenameUser] = useState<User | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [reactivateTarget, setReactivateTarget] = useState<User | null>(null);
+  const [reactivating, setReactivating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -113,6 +120,72 @@ function UsersInner() {
       toast.error('Failed to deactivate user');
     } finally {
       setDeactivating(false);
+    }
+  };
+
+  const handleRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameUser) return;
+    setRenaming(true);
+    try {
+      const response = await fetch(`/api/users/${renameUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameValue.trim() }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Name updated');
+        setRenameUser(null);
+        fetchUsers();
+      } else {
+        toast.error(data.error || 'Failed to update name');
+      }
+    } catch {
+      toast.error('Failed to update name');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    setReactivating(true);
+    try {
+      const response = await fetch(`/api/users/${reactivateTarget.id}/reactivate`, { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('User reactivated. A temporary password was emailed to them.');
+        setReactivateTarget(null);
+        fetchUsers();
+      } else {
+        toast.error(data.error || 'Failed to reactivate user');
+      }
+    } catch {
+      toast.error('Failed to reactivate user');
+    } finally {
+      setReactivating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/users/${deleteTarget.id}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('User deleted');
+        setDeleteTarget(null);
+        fetchUsers();
+      } else {
+        toast.error(data.error || 'Failed to delete user');
+        setDeleteTarget(null);
+      }
+    } catch {
+      toast.error('Failed to delete user');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -224,10 +297,37 @@ function UsersInner() {
                     <div><span className="tag">{ROLE_LABEL[u.role] || u.role}</span></div>
                     <div><Chip status={status} label={label} /></div>
                     <div><span className="t-sm muted">{u.created_at ? fmtDate(u.created_at, false) : 'N/A'}</span></div>
-                    <div>
-                      {isCoordinator && u.is_active && !isSelf ? (
+                    <div className="row" style={{ gap: 2 }}>
+                      {isCoordinator ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          title="Edit name"
+                          aria-label={`Edit name of ${u.name}`}
+                          onClick={() => { setRenameUser(u); setRenameValue(u.name); }}
+                        >
+                          <Icon name="edit" size={14} />
+                        </button>
+                      ) : null}
+                      {isCoordinator && !isSelf && u.is_active ? (
                         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirmUser(u)}>
                           Deactivate
+                        </button>
+                      ) : null}
+                      {isCoordinator && !u.is_active ? (
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReactivateTarget(u)}>
+                          Reactivate
+                        </button>
+                      ) : null}
+                      {isCoordinator && !isSelf ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          title="Delete user"
+                          aria-label={`Delete ${u.name}`}
+                          onClick={() => setDeleteTarget(u)}
+                        >
+                          <Icon name="trash" size={14} />
                         </button>
                       ) : null}
                     </div>
@@ -287,6 +387,64 @@ function UsersInner() {
         >
           <p className="t-sm">
             <b style={{ fontWeight: 500 }}>{confirmUser.name}</b> will no longer be able to sign in. Continue?
+          </p>
+        </Modal>
+      ) : null}
+      {renameUser ? (
+        <Modal
+          title="Edit name"
+          onClose={() => setRenameUser(null)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setRenameUser(null)}>Cancel</button>
+              <button type="submit" form="rename-user-form" className="btn btn-primary" disabled={renaming || !renameValue.trim()}>
+                {renaming ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          }
+        >
+          <form id="rename-user-form" onSubmit={handleRename} className="col" style={{ gap: 14 }}>
+            <Field label="Name">
+              <input className="input" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} maxLength={100} required autoFocus />
+            </Field>
+          </form>
+        </Modal>
+      ) : null}
+
+      {reactivateTarget ? (
+        <Modal
+          title="Reactivate user"
+          onClose={() => setReactivateTarget(null)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setReactivateTarget(null)}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={handleReactivate} disabled={reactivating}>
+                <Icon name="send" size={16} /> {reactivating ? 'Reactivating…' : 'Reactivate & email'}
+              </button>
+            </>
+          }
+        >
+          <p className="t-sm">
+            <b style={{ fontWeight: 500 }}>{reactivateTarget.name}</b> will get a new temporary password by email and must choose their own password when they sign in.
+          </p>
+        </Modal>
+      ) : null}
+
+      {deleteTarget ? (
+        <Modal
+          title="Delete user"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            </>
+          }
+        >
+          <p className="t-sm">
+            <b style={{ fontWeight: 500 }}>{deleteTarget.name}</b> will be removed for good. This cannot be undone. People with requests or tasks on record can only be deactivated.
           </p>
         </Modal>
       ) : null}

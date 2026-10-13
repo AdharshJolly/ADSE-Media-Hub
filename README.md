@@ -74,7 +74,7 @@ All routes are under `/api` and need a session cookie unless noted.
 | Area | Routes |
 | --- | --- |
 | Auth | `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password`, `POST auth/forgot-password`, `POST auth/logout-others`, `POST auth/reset-password` (public: login, forgot-password, reset-password) |
-| Users | `GET/POST users`, `POST users/:id/deactivate`, `GET users/team-members` |
+| Users | `GET/POST users`, `PATCH/DELETE users/:id`, `POST users/:id/deactivate`, `POST users/:id/reactivate`, `GET users/team-members` |
 | Requests | `GET/POST requests`, `POST requests/:id/approve`, `POST requests/:id/reject` |
 | Tasks | `GET/POST tasks`, `GET/DELETE tasks/:id`, `PATCH tasks/:id/status` (start only), `PATCH tasks/:id/assign`, `POST tasks/:id/review` (submit / approve / rework), `GET tasks/calendar` |
 | Collaboration | `GET/POST tasks/:id/comments`, `PATCH/DELETE comments/:id`, `GET/POST tasks/:id/links`, `DELETE links/:id`, `GET tasks/:id/activity` |

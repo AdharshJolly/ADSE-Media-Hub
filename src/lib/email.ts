@@ -86,6 +86,19 @@ export async function sendWelcomeCredentialsEmail(
   });
 }
 
+export async function sendAccountReactivatedEmail(
+  userEmail: string,
+  userName: string,
+  password: string,
+): Promise<boolean> {
+  return sendEmail({
+    to: userEmail,
+    critical: true,
+    subject: "Your ADSE Hub account has been reactivated",
+    html: credentialsEmail("Your account has been reactivated", "Your ADSE Hub account has been reactivated. Use these details to sign in:", userName, userEmail, password),
+  });
+}
+
 export async function sendPasswordResetLinkEmail(
   userEmail: string,
   userName: string,

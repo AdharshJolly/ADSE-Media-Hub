@@ -100,6 +100,8 @@ export const createUserSchema = z.object({
   role: roleSchema,
 });
 
+export const updateUserSchema = z.object({ name: text(100).min(1) });
+
 export const forgotPasswordSchema = z.object({ email });
 
 export const resetPasswordSchema = z.object({
