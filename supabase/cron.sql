@@ -42,4 +42,13 @@ select cron.schedule(
      ) $$
 );
 
+-- Housekeeping: drop expired/used password reset tokens and old rate-limit rows, daily at 04:00 UTC.
+select cron.unschedule(jobid) from cron.job where jobname = 'adse-prune-auth';
+select cron.schedule(
+  'adse-prune-auth',
+  '0 4 * * *',
+  $$ delete from public.password_reset_tokens where expires_at < now() - interval '1 day' or used_at < now() - interval '1 day';
+     delete from public.auth_rate_limits where created_at < now() - interval '1 day' $$
+);
+
 -- Inspect: select * from cron.job;  |  select * from cron.job_run_details order by start_time desc limit 10;
