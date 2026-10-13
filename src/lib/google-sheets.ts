@@ -1,148 +1,106 @@
 import { google } from 'googleapis';
+import { env } from './env';
+import { getAllUsers, getTasks, getRequests } from './db';
 
-const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!;
+// One-way mirror: Supabase is the source of truth, each tab is fully rewritten on every sync.
+// Password hashes and other secrets are never exported.
 
-// Simple in-memory cache with TTL
-const cache = new Map<string, { data: unknown; expiry: number }>();
-const CACHE_TTL = 30_000; // 30 seconds - good balance for Sheets API
+type Cell = string | number | boolean;
 
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiry) {
-    cache.delete(key);
-    return null;
+function getSheets() {
+  const email = env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const key = env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  if (!email || !key || !env.GOOGLE_SPREADSHEET_ID) {
+    throw new Error('Google Sheets is not configured');
   }
-  return entry.data as T;
-}
-
-function setCache(key: string, data: unknown): void {
-  cache.set(key, { data, expiry: Date.now() + CACHE_TTL });
-}
-
-const getAuth = () => {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: email,
-      private_key: key,
-    },
+  const auth = new google.auth.JWT({
+    email,
+    key,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-};
-
-const getSheets = () => {
-  const auth = getAuth();
   return google.sheets({ version: 'v4', auth });
-};
-
-export const SHEETS = {
-  USERS: 'Users',
-  REQUESTS: 'Requests',
-  TASKS: 'Tasks',
-  NOTIFICATIONS: 'Notifications',
-} as const;
-
-export async function getSheetData(sheetName: string): Promise<string[][]> {
-  const cacheKey = `sheet:${sheetName}`;
-  const cached = getCached<string[][]>(cacheKey);
-  if (cached) return cached;
-
-  const sheets = getSheets();
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A:Z`,
-  });
-  const data = response.data.values || [];
-  setCache(cacheKey, data);
-  return data;
 }
 
-export function invalidateCache(sheetName?: string): void {
-  if (sheetName) {
-    cache.delete(`sheet:${sheetName}`);
-  } else {
-    cache.clear();
-  }
+export function getSpreadsheetUrl(): string | null {
+  return env.GOOGLE_SPREADSHEET_ID
+    ? `https://docs.google.com/spreadsheets/d/${env.GOOGLE_SPREADSHEET_ID}`
+    : null;
 }
 
-export async function appendRow(sheetName: string, row: (string | number | boolean | Date)[]): Promise<void> {
-  const sheets = getSheets();
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A:Z`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: {
-      values: [row],
-    },
-  });
-  invalidateCache(sheetName);
-}
-
-export async function updateRow(
-  sheetName: string,
-  rowIndex: number,
-  row: (string | number | boolean | Date)[]
+async function writeTab(
+  sheets: ReturnType<typeof getSheets>,
+  existing: Set<string>,
+  tab: string,
+  header: string[],
+  rows: Cell[][],
 ): Promise<void> {
-  const sheets = getSheets();
+  const spreadsheetId = env.GOOGLE_SPREADSHEET_ID!;
+
+  if (!existing.has(tab)) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title: tab, gridProperties: { frozenRowCount: 1 } } } }] },
+    });
+    existing.add(tab);
+  }
+
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${tab}'` });
+  // RAW keeps every value as literal text, so user input like "=HYPERLINK(...)" cannot run as a formula.
   await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A${rowIndex + 1}`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: {
-      values: [row],
-    },
+    spreadsheetId,
+    range: `'${tab}'!A1`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [header, ...rows] },
   });
-  invalidateCache(sheetName);
 }
 
-export async function findRowByColumn(
-  sheetName: string,
-  columnIndex: number,
-  value: string
-): Promise<{ row: string[]; index: number } | null> {
-  const data = await getSheetData(sheetName);
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][columnIndex] === value) {
-      return { row: data[i], index: i };
-    }
-  }
-  return null;
+export interface SyncResult {
+  users: number;
+  requests: number;
+  tasks: number;
+  syncedAt: string;
 }
 
-export async function findAllRowsByColumn(
-  sheetName: string,
-  columnIndex: number,
-  value: string
-): Promise<{ row: string[]; index: number }[]> {
-  const data = await getSheetData(sheetName);
-  const results: { row: string[]; index: number }[] = [];
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][columnIndex] === value) {
-      results.push({ row: data[i], index: i });
-    }
-  }
-  return results;
-}
+export async function syncToSheets(): Promise<SyncResult> {
+  const sheets = getSheets();
 
-export function generateId(prefix: string): string {
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `${prefix}-${dateStr}-${random}`;
-}
+  const [users, requests, tasks, meta] = await Promise.all([
+    getAllUsers(),
+    getRequests(),
+    getTasks(),
+    sheets.spreadsheets.get({ spreadsheetId: env.GOOGLE_SPREADSHEET_ID!, fields: 'sheets.properties.title' }),
+  ]);
 
-// Helper: find current user from cached users sheet
-export async function getCurrentUser(userId: string): Promise<string[] | null> {
-  const users = await getSheetData(SHEETS.USERS);
-  const user = users.find((row, index) => index > 0 && row[0] === userId);
-  return user || null;
-}
+  const existing = new Set((meta.data.sheets ?? []).map((s) => s.properties?.title ?? ''));
+  const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  const who = (id: string | null | undefined) => (id ? nameOf.get(id) ?? id : '');
 
-// Helper: check if user has role
-export async function userHasRole(userId: string, roles: string[]): Promise<boolean> {
-  const user = await getCurrentUser(userId);
-  return user ? roles.includes(user[4]) : false;
+  // Sequential: concurrent writes to one spreadsheet can hit Google's per-document write limits.
+  await writeTab(sheets, existing, 'Users',
+    ['ID', 'Name', 'Email', 'Role', 'Skills', 'Active', 'Created'],
+    users.map((u) => [u.id, u.name, u.email, u.role, u.skills ?? '', u.is_active, u.created_at]),
+  );
+
+  await writeTab(sheets, existing, 'Requests',
+    ['ID', 'Title', 'Requestor', 'Media type', 'Event', 'Platform', 'Priority', 'Status', 'Deadline', 'Coordinator notes', 'Created', 'Updated'],
+    requests.map((r) => [
+      r.id, r.title, who(r.requestor_id), r.media_type, r.event_name ?? '', r.target_platform ?? '',
+      r.priority, r.status, r.deadline, r.coordinator_notes ?? '', r.created_at, r.updated_at,
+    ]),
+  );
+
+  await writeTab(sheets, existing, 'Tasks',
+    ['ID', 'Request ID', 'Title', 'Description', 'Media type', 'Assigned to', 'Created by', 'Priority', 'Status', 'Deadline', 'Completed', 'Notes', 'Created', 'Updated'],
+    tasks.map((t) => [
+      t.id, t.request_id ?? '', t.title, t.description ?? '', t.media_type ?? '', who(t.assigned_to), who(t.created_by),
+      t.priority, t.status, t.deadline, t.completion_date ?? '', t.notes ?? '', t.created_at, t.updated_at,
+    ]),
+  );
+
+  return {
+    users: users.length,
+    requests: requests.length,
+    tasks: tasks.length,
+    syncedAt: new Date().toISOString(),
+  };
 }
