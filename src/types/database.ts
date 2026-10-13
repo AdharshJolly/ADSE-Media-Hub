@@ -100,6 +100,8 @@ export interface DashboardStats {
     pending: number;
     in_progress: number;
     in_review: number;
+    // in_review plus overdue tasks whose assignees have all submitted
+    needs_review: number;
     completed: number;
     overdue: number;
   };

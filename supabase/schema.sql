@@ -198,6 +198,16 @@ insert into app_settings (key, value) values
   ('emailNotifications', true)
 on conflict (key) do nothing;
 
+-- Tasks a reviewer can act on: in review, or past deadline (status overdue) with every assignee submitted.
+create or replace function awaiting_review_task_ids() returns setof uuid
+language sql stable as $$
+  select t.id from tasks t
+  where t.status = 'in_review'
+     or (t.status = 'overdue'
+         and exists (select 1 from task_assignees a where a.task_id = t.id)
+         and not exists (select 1 from task_assignees a where a.task_id = t.id and a.state <> 'submitted'))
+$$;
+
 -- Aggregates computed in Postgres so dashboards stay one fast round trip as data grows.
 create or replace function get_dashboard_stats() returns json
 language sql stable as $$
@@ -207,6 +217,7 @@ language sql stable as $$
       'pending', count(*) filter (where status = 'pending'),
       'in_progress', count(*) filter (where status = 'in_progress'),
       'in_review', count(*) filter (where status = 'in_review'),
+      'needs_review', (select count(*) from awaiting_review_task_ids()),
       'completed', count(*) filter (where status = 'completed'),
       'overdue', count(*) filter (where status = 'overdue')) from tasks),
     'requestStats', (select json_build_object(
@@ -245,7 +256,7 @@ language sql stable as $$
   ) w
 $$;
 
-revoke execute on function get_dashboard_stats(), get_team_workload() from public, anon, authenticated;
+revoke execute on function awaiting_review_task_ids(), get_dashboard_stats(), get_team_workload() from public, anon, authenticated;
 
 -- Row Level Security: ON with NO policies = deny-all for the anon and authenticated
 -- roles. The app only talks to the database from the server with the service-role

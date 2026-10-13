@@ -333,8 +333,8 @@ export default function DashboardPage() {
       />
       <div className="grid g4">
         <Stat icon="clock" label="In progress" value={ts?.in_progress || 0} />
-        <Link href="/tasks?status=in_review" style={{ display: 'contents' }}>
-          <Stat icon="check" label="Needs review" value={ts?.in_review || 0} note={ts?.in_review ? 'Waiting for approval' : undefined} />
+        <Link href="/tasks?status=needs_review" style={{ display: 'contents' }}>
+          <Stat icon="check" label="Needs review" value={ts?.needs_review || 0} note={ts?.needs_review ? 'Waiting for approval' : undefined} />
         </Link>
         <Stat icon="check" label="Completed" value={ts?.completed || 0} note={ts?.total ? `${completedPct}% of all tasks` : undefined} />
         <Stat icon="alert" label="Overdue" value={ts?.overdue || 0} note="Needs attention" />

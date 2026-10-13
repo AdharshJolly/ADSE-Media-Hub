@@ -60,6 +60,7 @@ export interface DashboardStats {
     pending: number;
     in_progress: number;
     in_review: number;
+    needs_review: number;
     completed: number;
     overdue: number;
   };

@@ -12,6 +12,7 @@ drop table if exists notifications cascade;
 drop table if exists tasks cascade;
 drop table if exists requests cascade;
 drop table if exists users cascade;
+drop function if exists awaiting_review_task_ids() cascade;
 drop function if exists get_dashboard_stats() cascade;
 drop function if exists get_team_workload() cascade;
 drop function if exists update_updated_at_column() cascade;

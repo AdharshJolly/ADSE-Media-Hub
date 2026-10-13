@@ -227,7 +227,16 @@ export async function updateRequest(id: string, updates: Partial<Request>): Prom
 
 // ==================== Tasks ====================
 
-export async function getTasks(filters?: { status?: TaskStatus | 'active'; assigned_to?: string }): Promise<Task[]> {
+// 'active' = not completed; 'needs_review' = in review, or overdue with every assignee submitted.
+type TaskFilterStatus = TaskStatus | 'active' | 'needs_review';
+
+async function getAwaitingReviewIds(): Promise<string[]> {
+  const { data, error } = await supabase.rpc('awaiting_review_task_ids');
+  if (error) throw error;
+  return (data ?? []) as string[];
+}
+
+export async function getTasks(filters?: { status?: TaskFilterStatus; assigned_to?: string }): Promise<Task[]> {
   let query = supabase
     .from('tasks')
     .select('*')
@@ -236,6 +245,10 @@ export async function getTasks(filters?: { status?: TaskStatus | 'active'; assig
   if (filters?.status) {
     if (filters.status === 'active') {
       query = query.neq('status', 'completed');
+    } else if (filters.status === 'needs_review') {
+      const ids = await getAwaitingReviewIds();
+      if (ids.length === 0) return [];
+      query = query.in('id', ids);
     } else {
       query = query.eq('status', filters.status);
     }
@@ -254,7 +267,7 @@ export async function getTasks(filters?: { status?: TaskStatus | 'active'; assig
 export async function getTasksPaginated(
   page: number,
   pageSize: number,
-  filters?: { status?: TaskStatus | 'active'; assigned_to?: string; request_ids?: string[]; search?: string }
+  filters?: { status?: TaskFilterStatus; assigned_to?: string; request_ids?: string[]; search?: string }
 ): Promise<PaginatedResponse<Task>> {
   let query = supabase
     .from('tasks')
@@ -268,6 +281,10 @@ export async function getTasksPaginated(
   if (filters?.status) {
     if (filters.status === 'active') {
       query = query.neq('status', 'completed');
+    } else if (filters.status === 'needs_review') {
+      const ids = await getAwaitingReviewIds();
+      if (ids.length === 0) return { data: [], count: 0, page, pageSize, totalPages: 0 };
+      query = query.in('id', ids);
     } else {
       query = query.eq('status', filters.status);
     }

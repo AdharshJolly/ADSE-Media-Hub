@@ -5,7 +5,7 @@ import { authenticate, fail, parseBody, parsePagination, STAFF_ROLES } from '@/l
 import { createTaskSchema } from '@/lib/validation';
 import type { TaskStatus } from '@/types/database';
 
-const STATUSES = ['pending', 'in_progress', 'in_review', 'completed', 'overdue', 'active'];
+const STATUSES = ['pending', 'in_progress', 'in_review', 'completed', 'overdue', 'active', 'needs_review'];
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const statusParam = searchParams.get('status');
-    const status = statusParam && STATUSES.includes(statusParam) ? (statusParam as TaskStatus | 'active') : undefined;
+    const status = statusParam && STATUSES.includes(statusParam) ? (statusParam as TaskStatus | 'active' | 'needs_review') : undefined;
     const assignedTo = searchParams.get('assignedTo');
     const { page, pageSize } = parsePagination(searchParams);
 

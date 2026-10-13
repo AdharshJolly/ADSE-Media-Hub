@@ -224,7 +224,7 @@ function TasksView() {
             <option value="">All status</option>
             <option value="pending">Pending</option>
             <option value="in_progress">In progress</option>
-            <option value="in_review">In review</option>
+            <option value="needs_review">In review</option>
             <option value="completed">Completed</option>
             <option value="overdue">Overdue</option>
           </select>
