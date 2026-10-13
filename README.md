@@ -72,7 +72,7 @@ All routes are under `/api` and need a session cookie unless noted.
 
 | Area | Routes |
 | --- | --- |
-| Auth | `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password`, `POST auth/forgot-password`, `POST auth/reset-password` (public: login, forgot-password, reset-password) |
+| Auth | `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password`, `POST auth/forgot-password`, `POST auth/logout-others`, `POST auth/reset-password` (public: login, forgot-password, reset-password) |
 | Users | `GET/POST users`, `POST users/:id/deactivate`, `GET users/team-members` |
 | Requests | `GET/POST requests`, `POST requests/:id/approve`, `POST requests/:id/reject` |
 | Tasks | `GET/POST tasks`, `GET/DELETE tasks/:id`, `PATCH tasks/:id/status`, `POST tasks/:id/assign`, `GET tasks/calendar` |
@@ -88,6 +88,7 @@ All routes are under `/api` and need a session cookie unless noted.
 - **Forgot password** emails a one-time link (valid 30 minutes, only a hash of the token is stored). The password does not change until the link is used.
 - Changing or resetting a password signs out every other session (a `token_version` is carried in the session token and checked on each request). Other server instances may take up to 30 seconds to notice because users are cached briefly.
 - **Keep me signed in** (login checkbox, on by default) keeps the session for a year (browsers cap cookies near 400 days); unticked, it lasts 24 hours. Either way it ends on password change/reset, deactivation or removal of the account.
+- The shield button in the sidebar signs out every other device (this browser stays signed in), e.g. if a device is lost.
 - Rate limits: reset requests are capped per email and per IP; current-password attempts on change-password are capped per user.
 
 ## Upgrading an existing database

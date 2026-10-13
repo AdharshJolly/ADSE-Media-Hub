@@ -22,6 +22,7 @@ interface AuthContextType {
   login: (email: string, password: string, remember?: boolean) => Promise<{ success: boolean; error?: string; mustChangePassword?: boolean }>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
+  logoutOthers: () => Promise<boolean>;
   isCoordinator: boolean;
   isStudentHead: boolean;
   isTeamMember: boolean;
@@ -87,6 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const logoutOthers = async () => {
+    try {
+      const response = await fetch('/api/auth/logout-others', { method: 'POST' });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+
   const isCoordinator = user?.role === 'coordinator';
   const isStudentHead = user?.role === 'student_head';
   const isTeamMember = user?.role === 'team_member';
@@ -103,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         refreshUser: checkAuth,
         logout,
+        logoutOthers,
         isCoordinator,
         isStudentHead,
         isTeamMember,

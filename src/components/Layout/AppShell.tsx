@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -47,7 +48,7 @@ function pageTitle(role: string, pathname: string) {
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout, isCoordinator, isStudentHead } = useAuth();
+  const { user, logout, logoutOthers, isCoordinator, isStudentHead } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
@@ -149,6 +150,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <b className="trunc t-sm">{user?.name}</b>
         <span className="t-xs muted">{ROLE_LABEL[role]}</span>
       </div>
+      <button
+        type="button"
+        className="sb-out"
+        onClick={async () => {
+          if (!window.confirm('Sign out of all other devices? This browser stays signed in.')) return;
+          if (await logoutOthers()) toast.success('Signed out of all other devices');
+          else toast.error('Could not sign out other devices');
+        }}
+        aria-label="Sign out other devices"
+        title="Sign out other devices"
+        style={{ color: 'var(--muted)', display: 'grid', placeItems: 'center' }}
+      >
+        <Icon name="shield" />
+      </button>
       <button type="button" className="sb-out" onClick={logout} aria-label="Sign out" title="Sign out" style={{ color: 'var(--muted)', display: 'grid', placeItems: 'center' }}>
         <Icon name="logout" />
       </button>
