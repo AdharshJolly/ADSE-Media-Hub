@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { env } from './env';
 import { supabase } from './supabase';
+import { isAllowedPushEndpoint } from './push-hosts';
 
 export interface PushPayload {
   title: string;
@@ -33,6 +34,10 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
 
   await Promise.all(
     subs.map(async (s) => {
+      if (!isAllowedPushEndpoint(s.endpoint)) {
+        dead.push(s.endpoint);
+        return;
+      }
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, { TTL: 86400 });
       } catch (e) {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isAllowedPushEndpoint } from './push-hosts';
 
 export const mediaTypeSchema = z.enum(['graphic_design', 'photography', 'video_production']);
 export const prioritySchema = z.enum(['low', 'medium', 'high', 'urgent']);
@@ -72,7 +73,7 @@ export const settingsSchema = z.object({
 
 export const pushSubscriptionSchema = z.object({
   subscription: z.object({
-    endpoint: z.string().url().max(2000),
+    endpoint: z.string().url().max(2000).refine(isAllowedPushEndpoint, 'Unsupported push endpoint'),
     keys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }),
   }),
 });
