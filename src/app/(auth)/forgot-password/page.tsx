@@ -31,7 +31,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <AuthLayout headline="Locked out? It happens." blurb="We email a fresh temporary password. You will pick your own right after signing in.">
+    <AuthLayout headline="Locked out? It happens." blurb="We email a one-time reset link. Your current password keeps working until you use it.">
       <form onSubmit={handleSubmit} className="col" style={{ gap: 20 }}>
         <Link href="/login" className="row t-sm muted">
           <Icon name="left" />
@@ -39,18 +39,18 @@ export default function ForgotPasswordPage() {
         </Link>
         <div className="col" style={{ gap: 6 }}>
           <h1 className="t-h1">Reset your password</h1>
-          <p className="muted">Enter your account email and we will send a new temporary password.</p>
+          <p className="muted">Enter your account email and we will send a link to choose a new one.</p>
         </div>
         <Field label="Email" htmlFor="fe">
           <input id="fe" className="input" type="email" placeholder="you@adse.edu" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
         <button className="btn btn-primary btn-block" type="submit" disabled={loading} style={{ height: 44 }}>
-          {loading ? 'Sending…' : 'Email me a new password'}
+          {loading ? 'Sending…' : 'Email me a reset link'}
         </button>
         {sent ? (
           <div className="note" style={{ background: 'var(--s-done-bg)', color: 'var(--s-done-fg)', borderColor: 'transparent' }}>
             <Icon name="check" />
-            If that email is registered, a new password is on its way. Check your inbox in a minute.
+            If that email is registered, a reset link is on its way. It works once and expires in 30 minutes.
           </div>
         ) : null}
       </form>

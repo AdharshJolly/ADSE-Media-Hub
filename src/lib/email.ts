@@ -86,16 +86,24 @@ export async function sendWelcomeCredentialsEmail(
   });
 }
 
-export async function sendPasswordResetEmail(
+export async function sendPasswordResetLinkEmail(
   userEmail: string,
   userName: string,
-  password: string,
+  token: string,
+  validMinutes: number,
 ): Promise<boolean> {
+  const link = `${APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
   return sendEmail({
     to: userEmail,
     critical: true,
-    subject: "Your ADSE Hub password was reset",
-    html: credentialsEmail("Password reset", "We received a request to reset your password. If this wasn't you, contact your coordinator.", userName, userEmail, password),
+    subject: "Reset your ADSE Hub password",
+    html: `
+      <h2>Reset your password</h2>
+      <p>Hi ${escapeHtml(userName)},</p>
+      <p>We received a request to reset your password. Use the button below to choose a new one. The link works once and expires in ${validMinutes} minutes.</p>
+      <a href="${link}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:5px;">Choose a new password</a>
+      <p>If you didn't ask for this, ignore this email. Your current password still works.</p>
+    `,
   });
 }
 

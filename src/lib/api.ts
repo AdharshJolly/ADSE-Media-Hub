@@ -7,6 +7,16 @@ import type { Task, UserRole } from '@/types/database';
 
 export const STAFF_ROLES: UserRole[] = ['coordinator', 'student_head'];
 
+// Vercel sets x-vercel-forwarded-for itself, so a client cannot spoof it.
+export function clientIp(request: NextRequest): string {
+  return (
+    request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip')?.trim() ||
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    'unknown'
+  );
+}
+
 export function fail(error: string, status: number, extra?: Record<string, unknown>) {
   return NextResponse.json({ success: false, error, ...extra }, { status });
 }

@@ -90,6 +90,11 @@ export const createUserSchema = z.object({
 
 export const forgotPasswordSchema = z.object({ email });
 
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20).max(200),
+  newPassword: z.string().min(8, 'Must be at least 8 characters').max(72, 'Must be at most 72 characters'),
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1).max(200),

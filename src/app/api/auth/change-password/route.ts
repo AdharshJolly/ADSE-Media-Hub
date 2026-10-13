@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, hashPassword, verifyPassword } from '@/lib/auth';
+import { generateToken, getSession, hashPassword, setSession, verifyPassword } from '@/lib/auth';
 import { getUserById, updateUser } from '@/lib/db';
 import { fail, parseBody } from '@/lib/api';
 import { changePasswordSchema } from '@/lib/validation';
+import { isRateLimited } from '@/lib/password';
 
 // Uses getSession (not authenticate) on purpose: this is the one route a user
 // with must_change_password may call.
@@ -10,6 +11,11 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
     if (!session) return fail('Not authenticated', 401);
+
+    // Stops a stolen session from guessing the current password.
+    if (await isRateLimited(`chpw:user:${session.userId}`, 5, 15)) {
+      return fail('Too many attempts. Try again in a few minutes.', 429);
+    }
 
     const { data, response } = await parseBody(request, changePasswordSchema);
     if (response) return response;
@@ -21,11 +27,16 @@ export async function POST(request: NextRequest) {
       return fail('Current password is incorrect', 400);
     }
 
+    // Bumping token_version signs out every other session; this browser gets a fresh cookie.
+    const tokenVersion = (user.token_version ?? 0) + 1;
     const ok = await updateUser(user.id, {
       password_hash: await hashPassword(data.newPassword),
       must_change_password: false,
+      token_version: tokenVersion,
     });
     if (!ok) return fail('Failed to update password', 500);
+
+    await setSession(generateToken(user.id, tokenVersion));
 
     return NextResponse.json({ success: true, message: 'Password updated' });
   } catch (error) {

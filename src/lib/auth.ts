@@ -16,13 +16,15 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcryptjs.compare(password, hash);
 }
 
-export function generateToken(userId: string): string {
-  return jwt.sign({ userId }, JWT_SECRET, { algorithm: 'HS256', expiresIn: '24h' });
+// tv = the user's token_version at sign-in. Bumping it in the database signs out every session.
+export function generateToken(userId: string, tokenVersion = 0): string {
+  return jwt.sign({ userId, tv: tokenVersion }, JWT_SECRET, { algorithm: 'HS256', expiresIn: '24h' });
 }
 
-export function verifyToken(token: string): { userId: string } | null {
+export function verifyToken(token: string): { userId: string; tv: number } | null {
   try {
-    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { userId: string };
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { userId: string; tv?: number };
+    return { userId: payload.userId, tv: payload.tv ?? 0 };
   } catch {
     return null;
   }
@@ -47,6 +49,7 @@ export async function getSession(): Promise<Session | null> {
 
   const user = await getSessionUser(payload.userId);
   if (!user || !user.is_active || !user.is_approved) return null;
+  if ((user.token_version ?? 0) !== payload.tv) return null;
 
   return {
     userId: user.id,
