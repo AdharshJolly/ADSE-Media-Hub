@@ -34,3 +34,5 @@ next-env.d.ts
 
 # Vercel
 .vercel
+# Local E2E test report (contains demo credentials)
+/docs/e2e-test/
