@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { Avatar, Modal, fmtDate } from '@/components/ui/kit';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { TaskComment } from '@/types/database';
 
 interface TaskCommentsProps {
@@ -18,14 +19,13 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [toDelete, setToDelete] = useState<string | null>(null);
 
   const fetchComments = useCallback(async () => {
     try {
       const response = await fetch(`/api/tasks/${taskId}/comments`);
       const data = await response.json();
-      if (data.success) {
-        setComments(data.comments);
-      }
+      if (data.success) setComments(data.comments);
     } catch {
       toast.error('Failed to fetch comments');
     } finally {
@@ -39,7 +39,6 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
 
   const handleSubmit = async () => {
     if (!newComment.trim()) return;
-
     setSubmitting(true);
     try {
       const response = await fetch(`/api/tasks/${taskId}/comments`, {
@@ -49,7 +48,7 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
       });
       const data = await response.json();
       if (data.success) {
-        setComments(prev => [...prev, data.comment]);
+        setComments((prev) => [...prev, data.comment]);
         setNewComment('');
         toast.success('Comment posted');
       } else {
@@ -64,7 +63,6 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
 
   const handleUpdate = async (commentId: string) => {
     if (!editContent.trim()) return;
-
     try {
       const response = await fetch(`/api/comments/${commentId}`, {
         method: 'PATCH',
@@ -73,7 +71,7 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
       });
       const data = await response.json();
       if (data.success) {
-        setComments(prev => prev.map(c => c.id === commentId ? { ...c, content: editContent } : c));
+        setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, content: editContent } : c)));
         setEditingId(null);
         toast.success('Comment updated');
       } else {
@@ -84,14 +82,15 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
     }
   };
 
-  const handleDelete = async (commentId: string) => {
-    if (!confirm('Delete this comment?')) return;
-
+  const handleDelete = async () => {
+    const commentId = toDelete;
+    setToDelete(null);
+    if (!commentId) return;
     try {
       const response = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
       const data = await response.json();
       if (data.success) {
-        setComments(prev => prev.filter(c => c.id !== commentId));
+        setComments((prev) => prev.filter((c) => c.id !== commentId));
         toast.success('Comment deleted');
       } else {
         toast.error(data.error || 'Failed to delete comment');
@@ -101,115 +100,76 @@ export default function TaskComments({ taskId, currentUserId, canManage }: TaskC
     }
   };
 
-  const getInitials = (name: string) => name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
-
   return (
-    <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-        Comments ({comments.length})
+    <div className="card card-p col" style={{ gap: 18 }}>
+      <h2 className="t-h2">
+        Comments <span className="t-sm muted" style={{ fontWeight: 400 }}>{comments.length}</span>
       </h2>
 
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2].map(i => (
-            <div key={i} className="animate-pulse flex gap-3">
-              <div className="w-8 h-8 bg-muted rounded-full" />
-              <div className="flex-1 space-y-2">
-                <div className="h-3 w-24 bg-muted rounded" />
-                <div className="h-10 bg-muted rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
         <>
-          {/* Comment List */}
-          <div className="space-y-4 mb-6">
-            {comments.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No comments yet. Be the first to comment.</p>
-            ) : (
-              comments.map(comment => (
-                <div key={comment.id} className="flex gap-3">
-                  <div className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center flex-shrink-0 text-xs font-semibold">
-                    {comment.user ? getInitials(comment.user.name) : '?'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-foreground">{comment.user?.name || 'Unknown'}</span>
-                      <span className="text-xs text-muted-foreground">{format(new Date(comment.created_at), 'MMM d, h:mm a')}</span>
-                    </div>
-                    {editingId === comment.id ? (
-                      <div className="space-y-2">
-                        <textarea
-                          value={editContent}
-                          onChange={(e) => setEditContent(e.target.value)}
-                          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent resize-none"
-                          rows={3}
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleUpdate(comment.id)}
-                            className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-semibold hover:bg-primary/90"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-semibold hover:bg-muted/80"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-foreground whitespace-pre-wrap">{comment.content}</p>
-                    )}
-                    {/* Edit/Delete buttons */}
-                    {!editingId && (comment.user_id === currentUserId || canManage) && (
-                      <div className="flex gap-2 mt-1">
-                        {comment.user_id === currentUserId && (
-                          <button
-                            onClick={() => { setEditingId(comment.id); setEditContent(comment.content); }}
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(comment.id)}
-                          className="text-xs text-muted-foreground hover:text-red-500"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
+          <Skeleton style={{ height: 40 }} />
+          <Skeleton style={{ height: 40 }} />
+        </>
+      ) : comments.length === 0 ? (
+        <p className="t-sm muted">No comments yet. Be the first to comment.</p>
+      ) : (
+        comments.map((c) => (
+          <div key={c.id} className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+            <Avatar name={c.user?.name} />
+            <div className="col grow" style={{ gap: 4, minWidth: 0 }}>
+              <div className="row wrap" style={{ gap: 8 }}>
+                <b style={{ fontWeight: 500 }}>{c.user?.name || 'Unknown'}</b>
+                <span className="t-xs muted">{fmtDate(c.created_at)}</span>
+              </div>
+              {editingId === c.id ? (
+                <div className="col" style={{ gap: 8 }}>
+                  <textarea className="input" value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={3} />
+                  <div className="row">
+                    <button type="button" className="btn btn-sm btn-primary" onClick={() => handleUpdate(c.id)}>Save</button>
+                    <button type="button" className="btn btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-
-          {/* New Comment Input */}
-          <div className="border-t border-border pt-4">
-            <textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Write a comment..."
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent resize-none"
-              rows={3}
-            />
-            <div className="flex justify-end mt-2">
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !newComment.trim()}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Posting...' : 'Post Comment'}
-              </button>
+              ) : (
+                <p className="t-sm" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink-2)' }}>{c.content}</p>
+              )}
+              {editingId !== c.id && (c.user_id === currentUserId || canManage) ? (
+                <div className="row" style={{ gap: 12 }}>
+                  {c.user_id === currentUserId ? (
+                    <button type="button" className="lnk t-xs" onClick={() => { setEditingId(c.id); setEditContent(c.content); }}>Edit</button>
+                  ) : null}
+                  <button type="button" className="lnk t-xs" onClick={() => setToDelete(c.id)}>Delete</button>
+                </div>
+              ) : null}
             </div>
           </div>
-        </>
+        ))
       )}
+
+      <hr className="hr" />
+      <div className="col" style={{ gap: 8 }}>
+        <textarea className="input" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Write a comment…" rows={3} />
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={submitting || !newComment.trim()}>
+            {submitting ? 'Posting…' : 'Post comment'}
+          </button>
+        </div>
+      </div>
+
+      {toDelete ? (
+        <Modal
+          title="Delete comment?"
+          onClose={() => setToDelete(null)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setToDelete(null)}>Cancel</button>
+              <button type="button" className="btn btn-danger" onClick={handleDelete}>Delete</button>
+            </>
+          }
+        >
+          <p className="muted">This comment will be permanently removed.</p>
+        </Modal>
+      ) : null}
     </div>
   );
 }

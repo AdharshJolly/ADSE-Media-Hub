@@ -1,148 +1,87 @@
-'use client';
+import type { DashboardStats } from '@/types/database';
 
-interface ChartBarProps {
-  label: string;
-  value: number;
-  maxValue: number;
-  color: string;
-}
+type Seg = { label: string; value: number; color: string };
 
-function ChartBar({ label, value, maxValue, color }: ChartBarProps) {
-  const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
-  
+export function Donut({ segments, size = 128, center, sub }: { segments: Seg[]; size?: number; center: React.ReactNode; sub?: string }) {
+  const total = segments.reduce((a, s) => a + s.value, 0);
+  let acc = 0;
+  const stops = total
+    ? segments
+        .filter((s) => s.value > 0)
+        .map((s) => {
+          const from = (acc / total) * 100;
+          acc += s.value;
+          return `${s.color} ${from}% ${(acc / total) * 100}%`;
+        })
+        .join(',')
+    : 'var(--line) 0 100%';
+  const inner = Math.round(size * 0.7);
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-muted-foreground w-24 text-right">{label}</span>
-      <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} rounded-full transition-all duration-500 ease-out`}
-          style={{ width: `${Math.max(percentage, 2)}%` }}
-        />
+    <div className="donut" style={{ width: size, height: size, background: `conic-gradient(${stops})` }} role="img" aria-label="Status breakdown">
+      <div style={{ width: inner, height: inner }}>
+        <div>
+          <div className="t-num" style={{ fontSize: size > 110 ? 24 : 18 }}>{center}</div>
+          {sub ? <span className="t-xs muted">{sub}</span> : null}
+        </div>
       </div>
-      <span className="text-xs font-semibold text-foreground w-8">{value}</span>
     </div>
   );
 }
 
-interface PieChartProps {
-  data: { label: string; value: number; color: string }[];
-  size?: number;
+export function Legend({ segments }: { segments: Seg[] }) {
+  return (
+    <div className="col grow" style={{ gap: 8, minWidth: 130 }}>
+      {segments.map((s) => (
+        <div key={s.label} className="legend">
+          <i style={{ background: s.color }} />
+          <span className="grow">{s.label}</span>
+          <b className="mono" style={{ fontWeight: 500 }}>{s.value}</b>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function PieChart({ data, size = 120 }: PieChartProps) {
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-  if (total === 0) return <div className="text-muted-foreground text-sm">No data</div>;
+export function taskSegments(s: DashboardStats['taskStats']): Seg[] {
+  return [
+    { label: 'Completed', value: s?.completed || 0, color: 'var(--s-done-dot)' },
+    { label: 'In progress', value: s?.in_progress || 0, color: 'var(--s-prog-dot)' },
+    { label: 'Pending', value: s?.pending || 0, color: 'var(--s-pend-dot)' },
+    { label: 'Overdue', value: s?.overdue || 0, color: 'var(--s-over-dot)' },
+  ];
+}
 
-  let currentAngle = 0;
-  const segments = data
-    .filter(item => item.value > 0)
-    .map(item => {
-      const angle = (item.value / total) * 360;
-      const startAngle = currentAngle;
-      currentAngle += angle;
-      return { ...item, startAngle, angle };
-    });
-
-  const gradientParts = segments.map((seg, i) => {
-    const start = seg.startAngle;
-    const end = seg.startAngle + seg.angle;
-    return `${seg.color} ${start}deg ${end}deg`;
-  });
-
+export function TaskStatusChart({ stats }: { stats: DashboardStats['taskStats'] }) {
+  const segs = taskSegments(stats);
   return (
-    <div className="flex items-center gap-4">
-      <div
-        className="rounded-full"
-        style={{
-          width: size,
-          height: size,
-          background: `conic-gradient(${gradientParts.join(', ')})`,
-        }}
-      />
-      <div className="space-y-1">
-        {data.filter(item => item.value > 0).map((item, i) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <div className={`w-2 h-2 rounded-full ${item.color}`} />
-            <span className="text-muted-foreground">{item.label}</span>
-            <span className="font-semibold text-foreground">{item.value}</span>
+    <div className="row wrap" style={{ gap: 20 }}>
+      <Donut segments={segs} center={stats?.total || 0} sub="tasks" />
+      <Legend segments={segs} />
+    </div>
+  );
+}
+
+export function RequestStatusChart({ stats }: { stats: DashboardStats['requestStats'] }) {
+  const rows: Seg[] = [
+    { label: 'Completed', value: stats?.completed || 0, color: 'var(--s-done-dot)' },
+    { label: 'Approved', value: stats?.approved || 0, color: 'var(--s-appr-dot)' },
+    { label: 'Pending', value: stats?.pending || 0, color: 'var(--s-pend-dot)' },
+    { label: 'Rejected', value: stats?.rejected || 0, color: 'var(--s-over-dot)' },
+  ];
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <div className="col" style={{ gap: 14 }}>
+      {rows.map((r) => (
+        <div key={r.label} className="col" style={{ gap: 6 }}>
+          <div className="sp t-sm">
+            <span>{r.label}</span>
+            <b className="mono" style={{ fontWeight: 500 }}>{r.value}</b>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-interface TaskStatusChartProps {
-  stats: {
-    pending: number;
-    in_progress: number;
-    completed: number;
-    overdue: number;
-  };
-}
-
-export function TaskStatusChart({ stats }: TaskStatusChartProps) {
-  const maxValue = Math.max(stats.pending, stats.in_progress, stats.completed, stats.overdue, 1);
-
-  return (
-    <div className="space-y-3">
-      <ChartBar label="Pending" value={stats.pending} maxValue={maxValue} color="bg-amber-500" />
-      <ChartBar label="In Progress" value={stats.in_progress} maxValue={maxValue} color="bg-primary" />
-      <ChartBar label="Completed" value={stats.completed} maxValue={maxValue} color="bg-emerald-500" />
-      <ChartBar label="Overdue" value={stats.overdue} maxValue={maxValue} color="bg-red-500" />
-    </div>
-  );
-}
-
-export function TaskStatusPieChart({ stats }: TaskStatusChartProps) {
-  const data = [
-    { label: 'Pending', value: stats.pending, color: '#f59e0b' },
-    { label: 'In Progress', value: stats.in_progress, color: '#1e40af' },
-    { label: 'Completed', value: stats.completed, color: '#10b981' },
-    { label: 'Overdue', value: stats.overdue, color: '#ef4444' },
-  ];
-
-  return <PieChart data={data} />;
-}
-
-interface RequestStatusChartProps {
-  stats: {
-    pending: number;
-    approved: number;
-    rejected: number;
-    completed: number;
-  };
-}
-
-export function RequestStatusChart({ stats }: RequestStatusChartProps) {
-  const data = [
-    { label: 'Pending', value: stats.pending, color: '#f59e0b' },
-    { label: 'Approved', value: stats.approved, color: '#10b981' },
-    { label: 'Rejected', value: stats.rejected, color: '#ef4444' },
-    { label: 'Completed', value: stats.completed, color: '#3b82f6' },
-  ];
-
-  return <PieChart data={data} />;
-}
-
-interface UserRoleChartProps {
-  stats: {
-    coordinators: number;
-    studentHeads: number;
-    teamMembers: number;
-    requestors: number;
-  };
-}
-
-export function UserRoleChart({ stats }: UserRoleChartProps) {
-  const maxValue = Math.max(stats.coordinators, stats.studentHeads, stats.teamMembers, stats.requestors, 1);
-
-  return (
-    <div className="space-y-3">
-      <ChartBar label="Coordinators" value={stats.coordinators} maxValue={maxValue} color="bg-purple-500" />
-      <ChartBar label="Student Heads" value={stats.studentHeads} maxValue={maxValue} color="bg-blue-500" />
-      <ChartBar label="Team Members" value={stats.teamMembers} maxValue={maxValue} color="bg-orange-500" />
-      <ChartBar label="Requestors" value={stats.requestors} maxValue={maxValue} color="bg-green-500" />
+          <div className="bar">
+            <i style={{ width: `${(r.value / max) * 100}%`, background: r.color }} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

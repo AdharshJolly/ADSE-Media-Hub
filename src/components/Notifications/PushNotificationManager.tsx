@@ -1,20 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { Icon, Switch } from '@/components/ui/kit';
+
+function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(padded);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
 
 export default function PushNotificationManager() {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
-
-  useEffect(() => {
-    if ('Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window) {
-      setIsSupported(true);
-      setPermission(Notification.permission);
-      checkSubscription();
-    }
-  }, []);
+  const [busy, setBusy] = useState(false);
 
   const checkSubscription = async () => {
     try {
@@ -25,6 +27,14 @@ export default function PushNotificationManager() {
       console.error('Failed to check subscription');
     }
   };
+
+  useEffect(() => {
+    if ('Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window) {
+      setIsSupported(true);
+      setPermission(Notification.permission);
+      navigator.serviceWorker.register('/sw.js').then(checkSubscription).catch(() => console.error('Service worker registration failed'));
+    }
+  }, []);
 
   const subscribeToPush = async () => {
     try {
@@ -39,10 +49,9 @@ export default function PushNotificationManager() {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''),
       });
 
-      // Send subscription to server
       await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -61,11 +70,9 @@ export default function PushNotificationManager() {
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
-      
+
       if (subscription) {
         await subscription.unsubscribe();
-        
-        // Notify server
         await fetch('/api/notifications/subscribe', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -81,25 +88,36 @@ export default function PushNotificationManager() {
     }
   };
 
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (isSubscribed) await unsubscribeFromPush();
+      else await subscribeToPush();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!isSupported) {
     return null;
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <button
-        onClick={isSubscribed ? unsubscribeFromPush : subscribeToPush}
-        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-          isSubscribed
-            ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
-            : 'bg-primary text-primary-foreground hover:bg-primary/90'
-        }`}
+    <div className="card card-p row wrap" style={{ gap: 14 }}>
+      <span
+        style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary-text)', flex: 'none' }}
       >
-        {isSubscribed ? 'Disable Push' : 'Enable Push'}
-      </button>
-      {permission === 'denied' && (
-        <span className="text-xs text-red-500">Permission denied in browser settings</span>
-      )}
+        <Icon name="bell" size={20} />
+      </span>
+      <div className="col grow" style={{ minWidth: 200 }}>
+        <b style={{ fontWeight: 500 }}>Browser push notifications</b>
+        <p className="t-sm muted">Get alerts for assignments and comments even when this tab is closed.</p>
+        {permission === 'denied' ? (
+          <p className="t-xs" style={{ color: 'var(--s-over-fg)' }}>Permission is blocked in your browser settings.</p>
+        ) : null}
+      </div>
+      <Switch on={isSubscribed} onChange={toggle} label="Enable push" disabled={busy || permission === 'denied'} />
     </div>
   );
 }

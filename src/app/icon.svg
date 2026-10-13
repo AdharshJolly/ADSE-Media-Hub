@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ADSE Media Hub"><title>ADSE Media Hub</title><style>.k{stroke:#0B1B33}@media (prefers-color-scheme:dark){.k{stroke:#fff}}</style><defs><clipPath id="ap"><circle cx="256" cy="256" r="150"/></clipPath></defs>
+<g class="k" fill="none" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+<path d="M70 168V104q0-34 34-34h64"/><path d="M344 70h64q34 0 34 34v64"/><path d="M442 344v64q0 34-34 34h-64"/><path d="M168 442h-64q-34 0-34-34v-64"/></g>
+<circle cx="256" cy="256" r="150" fill="#1D5CFF"/>
+<g clip-path="url(#ap)" stroke="#FFFFFF" stroke-width="12" fill="none"><path d="M282.85 209.5L161.55 139.47"/><path d="M309.69 256L309.69 115.94"/><path d="M282.85 302.5L404.14 232.47"/><path d="M229.15 302.5L350.45 372.53"/><path d="M202.31 256L202.31 396.06"/><path d="M229.15 209.5L107.86 279.53"/></g>
+<path d="M256 194L309.69 225L309.69 287L256 318L202.31 287L202.31 225Z" fill="#0B1B33" stroke="#0B1B33" stroke-width="12" stroke-linejoin="miter"/></svg>

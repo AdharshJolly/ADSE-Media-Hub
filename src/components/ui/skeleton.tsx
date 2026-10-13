@@ -1,40 +1,27 @@
-import { cn } from '@/lib/utils';
+import type { CSSProperties } from 'react';
 
-interface SkeletonProps {
-  className?: string;
-}
-
-export function Skeleton({ className }: SkeletonProps) {
-  return (
-    <div className={cn('animate-pulse bg-muted rounded', className)} />
-  );
+export function Skeleton({ style, className = '' }: { style?: CSSProperties; className?: string }) {
+  return <div className={`sk ${className}`} style={style} aria-hidden="true" />;
 }
 
 export function StatCardSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-8 w-16" />
-        </div>
-        <Skeleton className="h-10 w-10 rounded-lg" />
-      </div>
-      <div className="mt-4 pt-3 border-t border-border/50">
-        <Skeleton className="h-3 w-20" />
-      </div>
+    <div className="card stat">
+      <Skeleton style={{ height: 14, width: 96 }} />
+      <Skeleton style={{ height: 30, width: 56 }} />
+      <Skeleton style={{ height: 12, width: 80 }} />
     </div>
   );
 }
 
-export function TableSkeleton({ rows = 5, cols = 5 }: { rows?: number; cols?: number }) {
+export function TableSkeleton({ rows = 5 }: { rows?: number; cols?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="card" style={{ overflow: 'hidden' }}>
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center space-x-4 p-4 bg-card border border-border rounded-lg">
-          {Array.from({ length: cols }).map((_, j) => (
-            <Skeleton key={j} className="h-4 flex-1" />
-          ))}
+        <div key={i} className="row" style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)', gap: 16 }}>
+          <Skeleton style={{ height: 14, flex: 2 }} />
+          <Skeleton style={{ height: 14, flex: 1 }} />
+          <Skeleton style={{ height: 14, flex: 1 }} />
         </div>
       ))}
     </div>
@@ -43,25 +30,23 @@ export function TableSkeleton({ rows = 5, cols = 5 }: { rows?: number; cols?: nu
 
 export function CardSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-      <div className="space-y-3">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-3 w-full" />
-        <Skeleton className="h-3 w-1/2" />
-      </div>
+    <div className="card card-p col" style={{ gap: 12 }}>
+      <Skeleton style={{ height: 18, width: 160 }} />
+      <Skeleton style={{ height: 14 }} />
+      <Skeleton style={{ height: 14, width: '70%' }} />
     </div>
   );
 }
 
 export function ListSkeleton({ items = 5 }: { items?: number }) {
   return (
-    <div className="space-y-2">
+    <div className="card" style={{ overflow: 'hidden' }}>
       {Array.from({ length: items }).map((_, i) => (
-        <div key={i} className="flex items-center space-x-3 p-3 bg-card border border-border rounded-lg">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-3 w-1/2" />
+        <div key={i} className="row" style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)', gap: 12 }}>
+          <Skeleton style={{ height: 36, width: 36, borderRadius: 99 }} />
+          <div className="col grow" style={{ gap: 6 }}>
+            <Skeleton style={{ height: 14, width: '55%' }} />
+            <Skeleton style={{ height: 12, width: '35%' }} />
           </div>
         </div>
       ))}

@@ -1,8 +1,22 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameDay,
+  isSameMonth,
+  addMonths,
+  subMonths,
+  addWeeks,
+  subWeeks,
+  startOfWeek,
+  endOfWeek,
+} from 'date-fns';
 import Link from 'next/link';
+import { Avatar, Chip, Empty, Icon, Pri } from '@/components/ui/kit';
 
 interface Task {
   id: string;
@@ -18,167 +32,254 @@ interface CalendarViewProps {
   tasks: Task[];
 }
 
-export default function CalendarView({ tasks }: CalendarViewProps) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+type Mode = 'month' | 'week' | 'agenda';
 
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const calendarStart = startOfWeek(monthStart);
-  const calendarEnd = endOfWeek(monthEnd);
-  const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+const STATUS_KEY: Record<string, string> = {
+  pending: 'pend',
+  in_progress: 'prog',
+  completed: 'done',
+  overdue: 'over',
+};
+
+function evStyle(status: string): React.CSSProperties {
+  const k = STATUS_KEY[status] || 'pend';
+  return { background: `var(--s-${k}-bg)`, color: `var(--s-${k}-fg)` };
+}
+
+function dotColor(status: string): string {
+  return `var(--s-${STATUS_KEY[status] || 'pend'}-dot)`;
+}
+
+const nowMs = () => Date.now();
+const WEEK_OPTS = { weekStartsOn: 1 as const };
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+export default function CalendarView({ tasks }: CalendarViewProps) {
+  const [mode, setMode] = useState<Mode>('month');
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  const days = useMemo(() => {
+    if (mode === 'week') {
+      return eachDayOfInterval({
+        start: startOfWeek(currentDate, WEEK_OPTS),
+        end: endOfWeek(currentDate, WEEK_OPTS),
+      });
+    }
+    return eachDayOfInterval({
+      start: startOfWeek(startOfMonth(currentDate), WEEK_OPTS),
+      end: endOfWeek(endOfMonth(currentDate), WEEK_OPTS),
+    });
+  }, [mode, currentDate]);
 
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>();
-    tasks.forEach(task => {
-      const dateKey = format(new Date(task.deadline), 'yyyy-MM-dd');
-      if (!map.has(dateKey)) map.set(dateKey, []);
-      map.get(dateKey)!.push(task);
+    tasks.forEach((task) => {
+      const key = format(new Date(task.deadline), 'yyyy-MM-dd');
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(task);
     });
     return map;
   }, [tasks]);
 
-  const selectedDayTasks = selectedDate
-    ? tasksByDate.get(format(selectedDate, 'yyyy-MM-dd')) || []
-    : [];
+  const upcoming = useMemo(() => {
+    const now = nowMs();
+    return tasks
+      .filter((t) => t.status !== 'completed' && new Date(t.deadline).getTime() >= now)
+      .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
+      .slice(0, 5);
+  }, [tasks]);
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: 'bg-amber-500',
-      in_progress: 'bg-primary',
-      completed: 'bg-emerald-500',
-      overdue: 'bg-red-500',
-    };
-    return colors[status] || 'bg-muted';
+  const agenda = useMemo(() => {
+    const start = startOfMonth(currentDate).getTime();
+    const end = endOfMonth(currentDate).getTime();
+    return tasks
+      .filter((t) => {
+        const ts = new Date(t.deadline).getTime();
+        return ts >= start && ts <= end;
+      })
+      .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
+  }, [tasks, currentDate]);
+
+  const selectedDayTasks = tasksByDate.get(format(selectedDate, 'yyyy-MM-dd')) || [];
+
+  const step = (dir: 1 | -1) => {
+    if (mode === 'week') setCurrentDate(dir === 1 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
+    else setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
   };
 
-  const getPriorityDot = (priority: string) => {
-    const colors: Record<string, string> = {
-      urgent: 'bg-rose-500',
-      high: 'bg-orange-500',
-      medium: 'bg-blue-500',
-      low: 'bg-slate-400',
-    };
-    return colors[priority] || 'bg-slate-400';
+  const goToday = () => {
+    const now = new Date();
+    setCurrentDate(now);
+    setSelectedDate(now);
   };
 
   return (
-    <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-      {/* Calendar Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border">
-        <button
-          onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-          className="p-2 hover:bg-muted rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h2 className="text-lg font-semibold text-foreground">
-          {format(currentDate, 'MMMM yyyy')}
-        </h2>
-        <button
-          onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-          className="p-2 hover:bg-muted rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+    <div className="col" style={{ gap: 16 }}>
+      <div className="row wrap" style={{ justifyContent: 'flex-end' }}>
+        <div className="seg" role="tablist" aria-label="Calendar view">
+          {(['month', 'week', 'agenda'] as Mode[]).map((m) => (
+            <button key={m} type="button" className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+              {m[0].toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row">
-        {/* Calendar Grid */}
-        <div className="flex-1 p-4">
-          {/* Day Headers */}
-          <div className="grid grid-cols-7 mb-2">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
-                {day}
-              </div>
-            ))}
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card-h">
+          <div className="row">
+            <button type="button" className="icon-btn" style={{ width: 36, height: 36 }} aria-label="Previous" onClick={() => step(-1)}>
+              <Icon name="left" size={16} />
+            </button>
+            <h2 className="t-h2" style={{ minWidth: 150, textAlign: 'center' }}>
+              {mode === 'week'
+                ? `${format(days[0], 'd MMM')} – ${format(days[days.length - 1], 'd MMM yyyy')}`
+                : format(currentDate, 'MMMM yyyy')}
+            </h2>
+            <button type="button" className="icon-btn" style={{ width: 36, height: 36 }} aria-label="Next" onClick={() => step(1)}>
+              <Icon name="right" size={16} />
+            </button>
           </div>
+          <div className="row wrap m-hide" style={{ gap: 14 }}>
+            <span className="legend"><i style={{ background: 'var(--s-pend-dot)' }} />Pending</span>
+            <span className="legend"><i style={{ background: 'var(--s-prog-dot)' }} />In progress</span>
+            <span className="legend"><i style={{ background: 'var(--s-done-dot)' }} />Done</span>
+            <span className="legend"><i style={{ background: 'var(--s-over-dot)' }} />Overdue</span>
+          </div>
+          <button type="button" className="btn btn-sm" onClick={goToday}>Today</button>
+        </div>
 
-          {/* Calendar Days */}
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day, idx) => {
-              const dateKey = format(day, 'yyyy-MM-dd');
-              const dayTasks = tasksByDate.get(dateKey) || [];
-              const isCurrentMonth = isSameMonth(day, currentDate);
-              const isToday = isSameDay(day, new Date());
-              const isSelected = selectedDate && isSameDay(day, selectedDate);
-
+        {mode === 'agenda' ? (
+          agenda.length === 0 ? (
+            <Empty icon="cal" title="Nothing due this month" text="Tasks with deadlines in this month appear here." />
+          ) : (
+            agenda.map((t) => (
+              <Link
+                key={t.id}
+                href={`/tasks/${t.id}`}
+                className="row"
+                style={{ padding: '12px 20px', borderTop: '1px solid var(--line)', gap: 12 }}
+              >
+                <i style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor(t.status), display: 'block', flex: 'none' }} />
+                <div className="col grow" style={{ minWidth: 0 }}>
+                  <b className="trunc" style={{ fontWeight: 500 }}>{t.title}</b>
+                  <span className="t-xs muted">{format(new Date(t.deadline), 'EEE d MMM, HH:mm')}</span>
+                </div>
+                <Pri level={t.priority} />
+                {t.assigned_to_name ? <Avatar name={t.assigned_to_name} size="sm" /> : null}
+              </Link>
+            ))
+          )
+        ) : (
+          <div className="cal">
+            {DOW.map((d) => (
+              <div key={d} className="dow">{d}</div>
+            ))}
+            {days.map((day) => {
+              const key = format(day, 'yyyy-MM-dd');
+              const dayTasks = tasksByDate.get(key) || [];
+              const out = mode === 'month' && !isSameMonth(day, currentDate);
+              const today = isSameDay(day, new Date());
+              const sel = isSameDay(day, selectedDate);
+              const limit = mode === 'week' ? 8 : 2;
               return (
-                <button
-                  key={idx}
+                <div
+                  key={key}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={format(day, 'EEEE d MMMM')}
+                  className={`day${out ? ' out' : ''}${today ? ' today' : ''}${sel ? ' sel' : ''}`}
+                  style={mode === 'week' ? { minHeight: 180 } : undefined}
                   onClick={() => setSelectedDate(day)}
-                  className={`relative min-h-[80px] p-1.5 text-left rounded-lg transition-all duration-150 ${
-                    isSelected
-                      ? 'bg-primary/10 border-2 border-primary'
-                      : isToday
-                      ? 'bg-muted border border-border'
-                      : 'hover:bg-muted/50 border border-transparent'
-                  } ${!isCurrentMonth ? 'opacity-40' : ''}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedDate(day);
+                    }
+                  }}
                 >
-                  <span className={`text-xs font-medium ${isToday ? 'text-primary' : 'text-foreground'}`}>
-                    {format(day, 'd')}
-                  </span>
-                  <div className="mt-1 space-y-0.5">
-                    {dayTasks.slice(0, 3).map(task => (
-                      <div
-                        key={task.id}
-                        className={`flex items-center gap-1 px-1 py-0.5 rounded text-[9px] text-white truncate ${getStatusColor(task.status)}`}
-                        title={task.title}
-                      >
-                        <span className="truncate">{task.title}</span>
-                      </div>
-                    ))}
-                    {dayTasks.length > 3 && (
-                      <span className="text-[9px] text-muted-foreground">+{dayTasks.length - 3} more</span>
-                    )}
-                  </div>
-                </button>
+                  <span className="n">{format(day, 'd')}</span>
+                  {dayTasks.slice(0, limit).map((t) => (
+                    <Link
+                      key={t.id}
+                      href={`/tasks/${t.id}`}
+                      className="ev"
+                      style={evStyle(t.status)}
+                      title={t.title}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {t.title}
+                    </Link>
+                  ))}
+                  {dayTasks.length > limit ? <span className="t-xs muted">+{dayTasks.length - limit} more</span> : null}
+                  {dayTasks.length > 0 ? (
+                    <span className="show-m" style={{ gap: 3, display: 'flex' }}>
+                      {dayTasks.slice(0, 3).map((t) => (
+                        <i key={t.id} style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor(t.status), display: 'block' }} />
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
               );
             })}
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Selected Day Details */}
-        <div className="lg:w-80 border-t lg:border-t-0 lg:border-l border-border p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">
-            {selectedDate ? format(selectedDate, 'EEEE, MMM d') : 'Select a day'}
-          </h3>
-          {selectedDate && (
-            <div className="space-y-2">
-              {selectedDayTasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No tasks due</p>
-              ) : (
-                selectedDayTasks.map(task => (
-                  <Link
-                    key={task.id}
-                    href={`/tasks/${task.id}`}
-                    className="block p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground line-clamp-1">{task.title}</p>
-                      <div className="flex items-center gap-1">
-                        <div className={`w-2 h-2 rounded-full ${getPriorityDot(task.priority)}`} />
-                        <div className={`w-2 h-2 rounded-full ${getStatusColor(task.status)}`} />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 capitalize">{task.status.replace('_', ' ')}</p>
-                    {task.assigned_to_name && (
-                      <p className="text-xs text-muted-foreground mt-0.5">Assigned to: {task.assigned_to_name}</p>
-                    )}
-                  </Link>
-                ))
-              )}
-            </div>
-          )}
-          {!selectedDate && (
-            <p className="text-sm text-muted-foreground">Click a day to see tasks</p>
+      {mode !== 'agenda' ? (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card-h">
+            <h2 className="t-h2">{format(selectedDate, 'EEEE, d MMM')}</h2>
+          </div>
+          {selectedDayTasks.length === 0 ? (
+            <p className="t-sm muted" style={{ padding: '4px 20px 18px' }}>No tasks due.</p>
+          ) : (
+            selectedDayTasks.map((t) => (
+              <Link
+                key={t.id}
+                href={`/tasks/${t.id}`}
+                className="row"
+                style={{ padding: '12px 20px', borderTop: '1px solid var(--line)', gap: 12 }}
+              >
+                <div className="col grow" style={{ minWidth: 0 }}>
+                  <b className="trunc" style={{ fontWeight: 500 }}>{t.title}</b>
+                  <span className="t-xs muted">
+                    {format(new Date(t.deadline), 'HH:mm')}
+                    {t.assigned_to_name ? ` · ${t.assigned_to_name}` : ''}
+                  </span>
+                </div>
+                <Pri level={t.priority} />
+                <Chip status={t.status} />
+              </Link>
+            ))
           )}
         </div>
+      ) : null}
+
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card-h">
+          <h2 className="t-h2">Coming up</h2>
+        </div>
+        {upcoming.length === 0 ? (
+          <p className="t-sm muted" style={{ padding: '4px 20px 18px' }}>No upcoming deadlines.</p>
+        ) : (
+          upcoming.map((t) => (
+            <Link
+              key={t.id}
+              href={`/tasks/${t.id}`}
+              className="row"
+              style={{ padding: '12px 20px', borderTop: '1px solid var(--line)', gap: 12 }}
+            >
+              <i style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor(t.status), display: 'block', flex: 'none' }} />
+              <div className="col grow" style={{ minWidth: 0 }}>
+                <b className="trunc" style={{ fontWeight: 500 }}>{t.title}</b>
+                <span className="t-xs muted">{format(new Date(t.deadline), 'EEE d MMM, HH:mm')}</span>
+              </div>
+              {t.assigned_to_name ? <Avatar name={t.assigned_to_name} size="sm" /> : null}
+            </Link>
+          ))
+        )}
       </div>
     </div>
   );
