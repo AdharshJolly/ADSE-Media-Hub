@@ -81,8 +81,8 @@ export async function sendWelcomeCredentialsEmail(
   return sendEmail({
     to: userEmail,
     critical: true,
-    subject: "Your ADSE Hub account",
-    html: credentialsEmail("Welcome to ADSE Hub", "An account has been created for you.", userName, userEmail, password),
+    subject: "Your ADSE Media Hub account",
+    html: credentialsEmail("Welcome to ADSE Media Hub", "An account has been created for you.", userName, userEmail, password),
   });
 }
 
@@ -94,8 +94,8 @@ export async function sendAccountReactivatedEmail(
   return sendEmail({
     to: userEmail,
     critical: true,
-    subject: "Your ADSE Hub account has been reactivated",
-    html: credentialsEmail("Your account has been reactivated", "Your ADSE Hub account has been reactivated. Use these details to sign in:", userName, userEmail, password),
+    subject: "Your ADSE Media Hub account has been reactivated",
+    html: credentialsEmail("Your account has been reactivated", "Your ADSE Media Hub account has been reactivated. Use these details to sign in:", userName, userEmail, password),
   });
 }
 
@@ -109,7 +109,7 @@ export async function sendPasswordResetLinkEmail(
   return sendEmail({
     to: userEmail,
     critical: true,
-    subject: "Reset your ADSE Hub password",
+    subject: "Reset your ADSE Media Hub password",
     html: `
       <h2>Reset your password</h2>
       <p>Hi ${escapeHtml(userName)},</p>
