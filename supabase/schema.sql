@@ -244,6 +244,7 @@ alter table task_links enable row level security;
 alter table auth_rate_limits enable row level security;
 alter table push_subscriptions enable row level security;
 alter table app_settings enable row level security;
+alter table password_reset_tokens enable row level security;
 
 revoke all on all tables in schema public from anon, authenticated;
 revoke all on all sequences in schema public from anon, authenticated;

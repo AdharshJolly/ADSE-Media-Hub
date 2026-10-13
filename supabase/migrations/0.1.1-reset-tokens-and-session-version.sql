@@ -14,3 +14,8 @@ create table if not exists password_reset_tokens (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_password_reset_tokens_user on password_reset_tokens (user_id);
+
+-- Same lockdown as every other table: RLS on with no policies, no API-role access.
+-- The app uses the service-role key server-side only.
+alter table password_reset_tokens enable row level security;
+revoke all on password_reset_tokens from anon, authenticated;
