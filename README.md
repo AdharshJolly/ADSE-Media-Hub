@@ -9,6 +9,7 @@ Version **0.1.0**
 - **Roles**: Coordinator, Student Head, Team Member, Requestor, each with its own access.
 - **Requests**: requestors submit work; coordinators/heads approve (a task is auto-created) or reject with a reason.
 - **Tasks**: create, assign, track status; list, Kanban board and calendar (month, week, agenda) views.
+- **Review workflow**: pending → in progress → in review → completed. Assignees start work and submit for review; a coordinator or student head approves, or sends it back with a note. A task can have several assignees (the first is the lead) and goes to review once all of them have submitted. Approving completes the originating request when none of its other tasks are still open.
 - **Collaboration**: comments, resource links, per-task activity feed.
 - **Notifications**: in-app, email and browser push. Deadline reminders at 7/3/1 days plus overdue alerts.
 - **Admin**: user management (admin adds users, a random password is emailed), email toggle, maintenance mode, Google Sheets sync status.
@@ -75,7 +76,7 @@ All routes are under `/api` and need a session cookie unless noted.
 | Auth | `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password`, `POST auth/forgot-password`, `POST auth/logout-others`, `POST auth/reset-password` (public: login, forgot-password, reset-password) |
 | Users | `GET/POST users`, `POST users/:id/deactivate`, `GET users/team-members` |
 | Requests | `GET/POST requests`, `POST requests/:id/approve`, `POST requests/:id/reject` |
-| Tasks | `GET/POST tasks`, `GET/DELETE tasks/:id`, `PATCH tasks/:id/status`, `POST tasks/:id/assign`, `GET tasks/calendar` |
+| Tasks | `GET/POST tasks`, `GET/DELETE tasks/:id`, `PATCH tasks/:id/status` (start only), `POST tasks/:id/assign`, `POST tasks/:id/review` (submit / approve / rework), `GET tasks/calendar` |
 | Collaboration | `GET/POST tasks/:id/comments`, `PATCH/DELETE comments/:id`, `GET/POST tasks/:id/links`, `DELETE links/:id`, `GET tasks/:id/activity` |
 | Notifications | `GET/PATCH notifications`, `POST notifications/read-all`, `POST/DELETE notifications/subscribe` |
 | Dashboard | `GET dashboard/stats`, `GET dashboard/workload` |
@@ -93,7 +94,9 @@ All routes are under `/api` and need a session cookie unless noted.
 
 ## Upgrading an existing database
 
-Run the scripts in `supabase/migrations/` in the Supabase SQL editor **before** deploying the matching release. v0.1.1 needs `0.1.1-reset-tokens-and-session-version.sql`.
+Run the scripts in `supabase/migrations/` in the Supabase SQL editor **before** deploying the matching release. v0.1.1 needs `0.1.1-reset-tokens-and-session-version.sql`; v0.2.0 needs `0.2.0-review-workflow.sql` (adds the `in_review` status and the `task_assignees` table).
+
+Note: a task in review is not flipped to `overdue` by the nightly job (that would lose its in-review state). It stays "In review" with a red date if the deadline has passed, and is not counted in the overdue stats.
 
 ## Reminders
 
