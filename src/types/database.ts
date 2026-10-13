@@ -9,6 +9,7 @@ export interface User {
   email: string;
   password_hash?: string;
   must_change_password: boolean;
+  token_version?: number;
   name: string;
   role: UserRole;
   skills: string;

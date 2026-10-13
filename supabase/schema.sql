@@ -16,6 +16,7 @@ create table if not exists users (
   is_active boolean default true,
   is_approved boolean default false,
   must_change_password boolean not null default false,
+  token_version integer not null default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -151,6 +152,17 @@ create table if not exists auth_rate_limits (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_auth_rate_limits_key_time on auth_rate_limits (key, created_at);
+
+-- One-time password reset links (only a SHA-256 hash of the token is stored)
+create table if not exists password_reset_tokens (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_password_reset_tokens_user on password_reset_tokens (user_id);
 
 -- Browser push subscriptions (one row per browser/device)
 create table if not exists push_subscriptions (

@@ -1,5 +1,6 @@
 -- DESTRUCTIVE: deletes ALL app data and tables. Test data only.
 -- Run this, then run schema.sql, then `npm run seed:admin`.
+drop table if exists password_reset_tokens cascade;
 drop table if exists app_settings cascade;
 drop table if exists push_subscriptions cascade;
 drop table if exists auth_rate_limits cascade;
