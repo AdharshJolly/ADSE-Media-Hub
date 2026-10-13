@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/lib/auth-context';
+import { fetchJson as getJson, peek } from '@/lib/client-cache';
 import { StatCardSkeleton, ListSkeleton } from '@/components/ui/skeleton';
 import { TaskStatusChart, RequestStatusChart, Donut, Legend, taskSegments } from '@/components/ui/charts';
 import { Avatar, Chip, Icon, MEDIA_LABEL, PageHead, Pri, Stat, fmtAgo, fmtDate, type IconName } from '@/components/ui/kit';
@@ -25,13 +26,15 @@ function firstName(name?: string) {
   return (name || '').split(' ')[0];
 }
 
-async function getJson(url: string) {
-  try {
-    const r = await fetch(url);
-    return await r.json();
-  } catch {
-    return { success: false };
-  }
+function dashUrls(role?: string) {
+  const staff = role === 'coordinator' || role === 'student_head';
+  return {
+    s: staff ? '/api/dashboard/stats' : null,
+    w: staff ? '/api/dashboard/workload' : null,
+    r: !role || role === 'team_member' ? null : `/api/requests?pageSize=${staff ? 5 : 50}${staff ? '&status=pending' : ''}`,
+    t: !role || role === 'requestor' ? null : '/api/tasks?pageSize=50',
+    n: !role || staff ? null : '/api/notifications',
+  };
 }
 
 function QuickAction({ href, icon, label }: { href: string; icon: IconName; label: string }) {
@@ -110,24 +113,35 @@ const nowMs = () => Date.now();
 export default function DashboardPage() {
   const { user, canManageTasks, isCoordinator } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [workload, setWorkload] = useState<Workload[]>([]);
-  const [requests, setRequests] = useState<Req[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [notes, setNotes] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Seed from the cache so returning to the dashboard paints instantly
+  const cached = useMemo(() => {
+    const u = dashUrls(user?.role);
+    return {
+      s: u.s ? peek(u.s) : undefined,
+      w: u.w ? peek(u.w) : undefined,
+      r: u.r ? peek(u.r) : undefined,
+      t: u.t ? peek(u.t) : undefined,
+      n: u.n ? peek(u.n) : undefined,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [stats, setStats] = useState<DashboardStats | null>(cached.s ?? null);
+  const [workload, setWorkload] = useState<Workload[]>(cached.w?.workload ?? []);
+  const [requests, setRequests] = useState<Req[]>(cached.r?.data ?? []);
+  const [tasks, setTasks] = useState<Task[]>(cached.t?.data ?? []);
+  const [notes, setNotes] = useState<Notification[]>(cached.n?.notifications ?? []);
+  const [loading, setLoading] = useState(!(cached.s || cached.r || cached.t || cached.n));
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
-    const role = user.role;
-    const staff = role === 'coordinator' || role === 'student_head';
+    const u = dashUrls(user.role);
     const [s, w, r, t, n] = await Promise.all([
-      staff ? getJson('/api/dashboard/stats') : Promise.resolve(null),
-      staff ? getJson('/api/dashboard/workload') : Promise.resolve(null),
-      role === 'team_member' ? Promise.resolve(null) : getJson(`/api/requests?pageSize=${staff ? 5 : 50}${staff ? '&status=pending' : ''}`),
-      role === 'requestor' ? Promise.resolve(null) : getJson('/api/tasks?pageSize=50'),
-      role === 'coordinator' || role === 'student_head' ? Promise.resolve(null) : getJson('/api/notifications'),
+      u.s ? getJson(u.s) : Promise.resolve(null),
+      u.w ? getJson(u.w) : Promise.resolve(null),
+      u.r ? getJson(u.r) : Promise.resolve(null),
+      u.t ? getJson(u.t) : Promise.resolve(null),
+      u.n ? getJson(u.n) : Promise.resolve(null),
     ]);
     if (s?.success) setStats(s);
     if (w?.success) setWorkload(w.workload || []);

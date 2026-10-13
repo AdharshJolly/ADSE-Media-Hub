@@ -1,11 +1,12 @@
 'use client';
 
-import { Suspense, useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/lib/auth-context';
 import { useDebounce } from '@/hooks/useDebounce';
+import { fetchJson, peek } from '@/lib/client-cache';
 import { TableSkeleton, CardSkeleton } from '@/components/ui/skeleton';
 import KanbanBoard from '@/components/Kanban/KanbanBoard';
 import { Avatar, Chip, Empty, Icon, Modal, PageHead, Pri, TypeTag, assigneeLabel, fmtDate, isLate } from '@/components/ui/kit';
@@ -15,6 +16,15 @@ interface TeamMember {
   id: string;
   name: string;
   email: string;
+}
+
+function buildTasksUrl(manage: boolean, status: string, search: string, paged: boolean, page: number) {
+  const p = new URLSearchParams();
+  if (manage && status) p.set('status', status);
+  if (search) p.set('search', search);
+  p.set('page', paged ? String(page) : '1');
+  p.set('pageSize', paged ? '12' : '100');
+  return `/api/tasks?${p}`;
 }
 
 const TABS = [
@@ -30,15 +40,21 @@ function TasksView() {
   const { user, canManageTasks } = useAuth();
   const params = useSearchParams();
   const q = params.get('q') || '';
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const seed = useMemo(
+    () => peek(buildTasksUrl(canManageTasks, params.get('status') || '', q, false, 1)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const skipSpinner = useRef(!!seed);
+  const [tasks, setTasks] = useState<Task[]>(seed?.data ?? []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!seed);
   const [statusFilter, setStatusFilter] = useState(params.get('status') || '');
   const [searchQuery, setSearchQuery] = useState(q);
   const [tab, setTab] = useState('all');
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(seed?.totalPages || 1);
+  const [totalCount, setTotalCount] = useState(seed?.count || 0);
   const [view, setView] = useState<'board' | 'list'>('board');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Task | null>(null);
@@ -48,27 +64,36 @@ function TasksView() {
   const isTeam = !canManageTasks;
   const paged = canManageTasks && view === 'list';
 
-  const fetchTasks = useCallback(async () => {
-    try {
+  const tasksUrl = useCallback(
+    () => buildTasksUrl(canManageTasks, statusFilter, debouncedSearch, paged, page),
+    [canManageTasks, statusFilter, debouncedSearch, page, paged],
+  );
+
+  const applyTasks = (data: any) => {
+    setTasks(data.data);
+    setTotalPages(data.totalPages || 1);
+    setTotalCount(data.count || 0);
+  };
+
+  const fetchTasks = useCallback(async (fresh = false) => {
+    const url = tasksUrl();
+    const hit = fresh ? undefined : peek(url);
+    if (hit) {
+      applyTasks(hit);
+      setLoading(false);
+    } else if (!skipSpinner.current) {
       setLoading(true);
-      const p = new URLSearchParams();
-      if (canManageTasks && statusFilter) p.set('status', statusFilter);
-      if (debouncedSearch) p.set('search', debouncedSearch);
-      p.set('page', paged ? String(page) : '1');
-      p.set('pageSize', paged ? '12' : '100');
-      const res = await fetch(`/api/tasks?${p}`);
-      const data = await res.json();
-      if (data.success) {
-        setTasks(data.data);
-        setTotalPages(data.totalPages || 1);
-        setTotalCount(data.count || 0);
-      }
+    }
+    skipSpinner.current = false;
+    try {
+      const data = await fetchJson(url);
+      if ((data as any).success) applyTasks(data);
     } catch {
       toast.error('Failed to fetch tasks');
     } finally {
       setLoading(false);
     }
-  }, [canManageTasks, statusFilter, debouncedSearch, page, paged]);
+  }, [tasksUrl]);
 
   useEffect(() => {
     fetchTasks();
@@ -95,7 +120,7 @@ function TasksView() {
       const data = await res.json();
       if (data.success) {
         toast.success(data.status === 'in_review' ? 'Submitted for review' : 'Submitted. Waiting on the other assignees');
-        fetchTasks();
+        fetchTasks(true);
       } else {
         toast.error(data.error || 'Failed to submit');
       }
@@ -179,7 +204,7 @@ function TasksView() {
         toast.error(data.error || 'Failed to delete task');
       } else {
         toast.success('Task deleted');
-        fetchTasks();
+        fetchTasks(true);
       }
     } catch {
       setTasks(original);

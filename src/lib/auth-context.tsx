@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { clearCache } from '@/lib/client-cache';
 
 interface User {
   id: string;
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       
       if (data.success) {
+        clearCache();
         setMaintenance(data.maintenance === true);
         setUser({ ...data.user, must_change_password: data.mustChangePassword });
         return { success: true, mustChangePassword: data.mustChangePassword === true };
@@ -81,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
+      clearCache();
       setUser(null);
       router.push('/login');
     } catch (error) {
