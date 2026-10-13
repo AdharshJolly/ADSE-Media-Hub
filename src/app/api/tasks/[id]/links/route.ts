@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
 import { getTaskLinks, createTaskLink, logTaskActivity } from '@/lib/db';
+import { authenticate, fail, getAccessibleTask, parseBody } from '@/lib/api';
+import { linkSchema } from '@/lib/validation';
 
 export async function GET(
   request: NextRequest,
@@ -8,16 +9,16 @@ export async function GET(
 ) {
   try {
     const { id: taskId } = await params;
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
+
+    if (!(await getAccessibleTask(taskId, session))) return fail('Task not found', 404);
 
     const links = await getTaskLinks(taskId);
     return NextResponse.json({ success: true, links });
   } catch (error) {
     console.error('Get links error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch links' }, { status: 500 });
+    return fail('Failed to fetch links', 500);
   }
 }
 
@@ -27,36 +28,22 @@ export async function POST(
 ) {
   try {
     const { id: taskId } = await params;
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
-    const body = await request.json();
-    const { url, title, description } = body;
+    if (!(await getAccessibleTask(taskId, session))) return fail('Task not found', 404);
 
-    if (!url?.trim()) {
-      return NextResponse.json({ success: false, error: 'URL is required' }, { status: 400 });
-    }
+    const { data, response: bad } = await parseBody(request, linkSchema);
+    if (bad) return bad;
 
-    // Basic URL validation
-    try {
-      new URL(url);
-    } catch {
-      return NextResponse.json({ success: false, error: 'Invalid URL format' }, { status: 400 });
-    }
+    const link = await createTaskLink(taskId, session.userId, data.url, data.title, data.description);
+    if (!link) return fail('Failed to create link', 500);
 
-    const link = await createTaskLink(taskId, session.userId, url.trim(), title?.trim() || '', description?.trim() || '');
-    if (!link) {
-      return NextResponse.json({ success: false, error: 'Failed to create link' }, { status: 500 });
-    }
-
-    // Log activity
     await logTaskActivity(taskId, session.userId, 'link_added', { link_id: link.id, url: link.url });
 
     return NextResponse.json({ success: true, link });
   } catch (error) {
     console.error('Create link error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create link' }, { status: 500 });
+    return fail('Failed to create link', 500);
   }
 }

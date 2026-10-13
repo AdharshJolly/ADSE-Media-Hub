@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
 import { getTaskById, updateTask, getUserById, createNotification, logTaskActivity } from '@/lib/db';
 import { sendTaskAssignedEmail } from '@/lib/email';
+import { authenticate, fail, parseBody, STAFF_ROLES } from '@/lib/api';
+import { assignTaskSchema } from '@/lib/validation';
 
 export async function PATCH(
   request: NextRequest,
@@ -9,47 +10,27 @@ export async function PATCH(
 ) {
   try {
     const { id: taskId } = await params;
-    const session = await getSession();
-    
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate(STAFF_ROLES);
+    if (response) return response;
 
-    const currentUser = await getUserById(session.userId);
-    if (!currentUser || (currentUser.role !== 'coordinator' && currentUser.role !== 'student_head')) {
-      return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
+    const { data, response: bad } = await parseBody(request, assignTaskSchema);
+    if (bad) return bad;
 
-    const body = await request.json();
-    const { assignedTo } = body;
-
-    if (!assignedTo) {
-      return NextResponse.json({ success: false, error: 'assignedTo is required' }, { status: 400 });
-    }
-
-    // Get task details
     const task = await getTaskById(taskId);
-    if (!task) {
-      return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
+    if (!task) return fail('Task not found', 404);
+
+    const assignee = await getUserById(data.assignedTo);
+    if (!assignee || !assignee.is_active || !assignee.is_approved) {
+      return fail('User not found or inactive', 404);
     }
 
-    // Verify the assignee exists
-    const assignee = await getUserById(assignedTo);
-    if (!assignee) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-    }
+    const success = await updateTask(taskId, { assigned_to: data.assignedTo });
+    if (!success) return fail('Failed to assign task', 500);
 
-    const success = await updateTask(taskId, { assigned_to: assignedTo });
-    if (!success) {
-      return NextResponse.json({ success: false, error: 'Failed to assign task' }, { status: 500 });
-    }
-
-    // Log activity
     await logTaskActivity(taskId, session.userId, 'assigned', { assignee_name: assignee.name });
 
-    // Notify assigned team member
     await createNotification({
-      recipient_id: assignedTo,
+      recipient_id: data.assignedTo,
       type: 'task_assigned',
       title: 'Task Assigned',
       message: `You have been assigned a new task: "${task.title}". Deadline: ${new Date(task.deadline).toLocaleDateString()}`,
@@ -57,7 +38,6 @@ export async function PATCH(
       is_read: false,
     });
 
-    // Send email to assigned member
     sendTaskAssignedEmail(
       assignee.email,
       assignee.name,
@@ -70,6 +50,6 @@ export async function PATCH(
     return NextResponse.json({ success: true, message: 'Task assigned successfully' });
   } catch (error) {
     console.error('Assign task error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to assign task' }, { status: 500 });
+    return fail('Failed to assign task', 500);
   }
 }

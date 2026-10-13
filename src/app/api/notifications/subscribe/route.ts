@@ -1,53 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { getUserById, supabase } from '@/lib/db';
-
-// In-memory store for subscriptions (in production, use a database)
-const subscriptions = new Map<string, { endpoint: string; keys: object }>();
+import { authenticate, fail, parseBody } from '@/lib/api';
+import { pushSubscriptionSchema, pushUnsubscribeSchema } from '@/lib/validation';
+import { supabase } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
-    const body = await request.json();
-    const { subscription } = body;
+    const { data, response: bad } = await parseBody(request, pushSubscriptionSchema);
+    if (bad) return bad;
 
-    if (!subscription?.endpoint) {
-      return NextResponse.json({ success: false, error: 'Invalid subscription' }, { status: 400 });
-    }
-
-    // Store subscription with user ID
-    subscriptions.set(session.userId, {
-      endpoint: subscription.endpoint,
-      keys: subscription.keys || {},
-    });
+    const { endpoint, keys } = data.subscription;
+    // Endpoint is unique per browser; re-subscribing (or a new login on the same
+    // browser) moves it to the current user.
+    const { error } = await supabase.from('push_subscriptions').upsert(
+      { user_id: session.userId, endpoint, p256dh: keys.p256dh, auth: keys.auth },
+      { onConflict: 'endpoint' },
+    );
+    if (error) throw error;
 
     return NextResponse.json({ success: true, message: 'Subscription saved' });
   } catch (error) {
     console.error('Subscribe error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to subscribe' }, { status: 500 });
+    return fail('Failed to subscribe', 500);
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
-    const body = await request.json();
-    const { endpoint } = body;
+    const { data, response: bad } = await parseBody(request, pushUnsubscribeSchema);
+    if (bad) return bad;
 
-    // Remove subscription
-    subscriptions.delete(session.userId);
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .delete()
+      .eq('endpoint', data.endpoint)
+      .eq('user_id', session.userId);
+    if (error) throw error;
 
     return NextResponse.json({ success: true, message: 'Subscription removed' });
   } catch (error) {
     console.error('Unsubscribe error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to unsubscribe' }, { status: 500 });
+    return fail('Failed to unsubscribe', 500);
   }
 }

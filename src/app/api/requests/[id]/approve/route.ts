@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
 import { updateRequest, getUserById, getRequestById, createTask, createNotification } from '@/lib/db';
 import { sendRequestApprovedEmail } from '@/lib/email';
+import { authenticate, fail, parseBody, STAFF_ROLES } from '@/lib/api';
+import { decisionSchema } from '@/lib/validation';
 
 export async function POST(
   request: NextRequest,
@@ -9,41 +10,27 @@ export async function POST(
 ) {
   try {
     const { id: requestId } = await params;
-    const session = await getSession();
-    
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate(STAFF_ROLES);
+    if (response) return response;
 
-    const currentUser = await getUserById(session.userId);
-    if (!currentUser || (currentUser.role !== 'coordinator' && currentUser.role !== 'student_head')) {
-      return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
+    const { data, response: bad } = await parseBody(request, decisionSchema);
+    if (bad) return bad;
 
-    const body = await request.json();
-    const { notes } = body;
-
-    // Get the request details
     const requestData = await getRequestById(requestId);
-    if (!requestData) {
-      return NextResponse.json({ success: false, error: 'Request not found' }, { status: 404 });
-    }
+    if (!requestData) return fail('Request not found', 404);
+    if (requestData.status !== 'pending') return fail(`Request is already ${requestData.status}`, 409);
 
-    // Update request status
     const success = await updateRequest(requestId, {
       status: 'approved',
-      coordinator_notes: notes || '',
+      coordinator_notes: data.notes,
     });
-
-    if (!success) {
-      return NextResponse.json({ success: false, error: 'Failed to approve request' }, { status: 500 });
-    }
+    if (!success) return fail('Failed to approve request', 500);
 
     // Auto-create a task from the request
     const task = await createTask({
       request_id: requestId,
       created_by: session.userId,
-      assigned_to: session.userId, // Temporary: assign to self until coordinator assigns someone
+      assigned_to: session.userId, // Temporary: assigned to approver until someone is picked
       title: requestData.title,
       description: requestData.description,
       media_type: requestData.media_type,
@@ -51,10 +38,9 @@ export async function POST(
       deadline: requestData.deadline,
       status: 'pending',
       completion_date: null,
-      notes: `Auto-created from request. ${notes || ''}`,
+      notes: `Auto-created from request. ${data.notes}`.trim(),
     });
 
-    // Notify requestor
     await createNotification({
       recipient_id: requestData.requestor_id,
       type: 'request_approved',
@@ -64,20 +50,19 @@ export async function POST(
       is_read: false,
     });
 
-    // Send email to requestor
     const requestor = await getUserById(requestData.requestor_id);
     if (requestor) {
       sendRequestApprovedEmail(requestor.email, requestor.name, requestData.title).catch(console.error);
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Request approved and task created',
       taskId: task?.id,
-      taskCreated: !!task
+      taskCreated: !!task,
     });
   } catch (error) {
     console.error('Approve request error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to approve request' }, { status: 500 });
+    return fail('Failed to approve request', 500);
   }
 }

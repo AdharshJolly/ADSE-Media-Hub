@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { authenticate, fail } from '@/lib/api';
 import { getDashboardStats } from '@/lib/db';
 
 export async function GET() {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { response } = await authenticate();
+    if (response) return response;
 
     const stats = await getDashboardStats();
 
@@ -21,6 +19,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Get dashboard stats error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch stats' }, { status: 500 });
+    return fail('Failed to fetch stats', 500);
   }
 }

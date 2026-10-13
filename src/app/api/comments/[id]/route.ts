@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { updateTaskComment, deleteTaskComment, getUserById, supabase } from '@/lib/db';
+import { updateTaskComment, deleteTaskComment } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
+import { authenticate, fail, parseBody, STAFF_ROLES } from '@/lib/api';
+import { commentSchema } from '@/lib/validation';
+import type { Session } from '@/lib/auth';
+
+async function canModify(commentId: string, session: Session): Promise<'ok' | 'missing' | 'denied'> {
+  const { data: comment } = await supabase.from('task_comments').select('user_id').eq('id', commentId).maybeSingle();
+  if (!comment) return 'missing';
+  const allowed = comment.user_id === session.userId || STAFF_ROLES.includes(session.role);
+  return allowed ? 'ok' : 'denied';
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -8,41 +18,23 @@ export async function PATCH(
 ) {
   try {
     const { id: commentId } = await params;
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
-    const body = await request.json();
-    const { content } = body;
+    const { data, response: bad } = await parseBody(request, commentSchema);
+    if (bad) return bad;
 
-    if (!content?.trim()) {
-      return NextResponse.json({ success: false, error: 'Content is required' }, { status: 400 });
-    }
+    const access = await canModify(commentId, session);
+    if (access === 'missing') return fail('Comment not found', 404);
+    if (access === 'denied') return fail('Permission denied', 403);
 
-    // Check ownership
-    const { data: comment } = await supabase.from('task_comments').select('user_id').eq('id', commentId).single();
-    if (!comment) {
-      return NextResponse.json({ success: false, error: 'Comment not found' }, { status: 404 });
-    }
-
-    const currentUser = await getUserById(session.userId);
-    const isOwner = comment.user_id === session.userId;
-    const isCoordinator = currentUser?.role === 'coordinator' || currentUser?.role === 'student_head';
-
-    if (!isOwner && !isCoordinator) {
-      return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
-
-    const success = await updateTaskComment(commentId, content.trim());
-    if (!success) {
-      return NextResponse.json({ success: false, error: 'Failed to update comment' }, { status: 500 });
-    }
+    const success = await updateTaskComment(commentId, data.content);
+    if (!success) return fail('Failed to update comment', 500);
 
     return NextResponse.json({ success: true, message: 'Comment updated' });
   } catch (error) {
     console.error('Update comment error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update comment' }, { status: 500 });
+    return fail('Failed to update comment', 500);
   }
 }
 
@@ -52,33 +44,19 @@ export async function DELETE(
 ) {
   try {
     const { id: commentId } = await params;
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
-    // Check ownership
-    const { data: comment } = await supabase.from('task_comments').select('user_id').eq('id', commentId).single();
-    if (!comment) {
-      return NextResponse.json({ success: false, error: 'Comment not found' }, { status: 404 });
-    }
-
-    const currentUser = await getUserById(session.userId);
-    const isOwner = comment.user_id === session.userId;
-    const isCoordinator = currentUser?.role === 'coordinator' || currentUser?.role === 'student_head';
-
-    if (!isOwner && !isCoordinator) {
-      return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
+    const access = await canModify(commentId, session);
+    if (access === 'missing') return fail('Comment not found', 404);
+    if (access === 'denied') return fail('Permission denied', 403);
 
     const success = await deleteTaskComment(commentId);
-    if (!success) {
-      return NextResponse.json({ success: false, error: 'Failed to delete comment' }, { status: 500 });
-    }
+    if (!success) return fail('Failed to delete comment', 500);
 
     return NextResponse.json({ success: true, message: 'Comment deleted' });
   } catch (error) {
     console.error('Delete comment error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete comment' }, { status: 500 });
+    return fail('Failed to delete comment', 500);
   }
 }

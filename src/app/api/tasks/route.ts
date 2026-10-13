@@ -1,100 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { getTasksPaginated, createTask, getUserById, getTeamMembers, logTaskActivity } from '@/lib/db';
+import { getTasksPaginated, createTask, getUserById, getRequests, logTaskActivity, createNotification } from '@/lib/db';
 import { sendTaskAssignedEmail } from '@/lib/email';
+import { authenticate, fail, parseBody, parsePagination, STAFF_ROLES } from '@/lib/api';
+import { createTaskSchema } from '@/lib/validation';
+import type { TaskStatus } from '@/types/database';
+
+const STATUSES = ['pending', 'in_progress', 'completed', 'overdue', 'active'];
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') as 'pending' | 'in_progress' | 'completed' | 'overdue' | 'active' | null;
+    const statusParam = searchParams.get('status');
+    const status = statusParam && STATUSES.includes(statusParam) ? (statusParam as TaskStatus | 'active') : undefined;
     const assignedTo = searchParams.get('assignedTo');
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '20');
+    const { page, pageSize } = parsePagination(searchParams);
 
-    const currentUser = await getUserById(session.userId);
-
-    // Team members can only see their own tasks
-    const filters = {
-      status: status || undefined,
-      assigned_to: currentUser?.role === 'team_member' ? session.userId : (assignedTo || undefined),
-    };
+    // Strip characters that have meaning in PostgREST filter syntax
+    const search = (searchParams.get('search') || '').replace(/[,()%*\\]/g, ' ').trim().slice(0, 100);
+    const filters: Parameters<typeof getTasksPaginated>[2] = { status, search: search || undefined };
+    if (session.role === 'team_member') {
+      filters.assigned_to = session.userId;
+    } else if (session.role === 'requestor') {
+      const mine = await getRequests({ requestor_id: session.userId });
+      filters.request_ids = mine.map(r => r.id);
+    } else if (assignedTo) {
+      filters.assigned_to = assignedTo;
+    }
 
     const result = await getTasksPaginated(page, pageSize, filters);
 
     return NextResponse.json({ success: true, ...result }, {
-      headers: {
-        'Cache-Control': 'private, max-age=5, stale-while-revalidate=15',
-      },
+      headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=15' },
     });
   } catch (error) {
     console.error('Get tasks error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch tasks' }, { status: 500 });
+    return fail('Failed to fetch tasks', 500);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate(STAFF_ROLES);
+    if (response) return response;
 
-    const currentUser = await getUserById(session.userId);
-    if (!currentUser || (currentUser.role !== 'coordinator' && currentUser.role !== 'student_head')) {
-      return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
+    const { data, response: bad } = await parseBody(request, createTaskSchema);
+    if (bad) return bad;
 
-    const body = await request.json();
-    const { requestId, assignedTo, title, description, mediaType, priority, deadline, notes } = body;
-
-    if (!title || !assignedTo || !deadline) {
-      return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
-    }
-
-    const assignedUser = await getUserById(assignedTo);
-    if (!assignedUser) {
-      return NextResponse.json({ success: false, error: 'Assigned user not found' }, { status: 404 });
+    const assignedUser = await getUserById(data.assignedTo);
+    if (!assignedUser || !assignedUser.is_active || !assignedUser.is_approved) {
+      return fail('Assigned user not found or inactive', 404);
     }
 
     const task = await createTask({
-      request_id: requestId || null,
+      request_id: data.requestId || null,
       created_by: session.userId,
-      assigned_to: assignedTo,
-      title,
-      description: description || '',
-      media_type: mediaType || '',
-      priority: priority || 'medium',
-      deadline,
+      assigned_to: data.assignedTo,
+      title: data.title,
+      description: data.description,
+      media_type: data.mediaType,
+      priority: data.priority,
+      deadline: data.deadline,
       status: 'pending',
       completion_date: null,
-      notes: notes || '',
+      notes: data.notes,
     });
 
-    if (!task) {
-      return NextResponse.json({ success: false, error: 'Failed to create task' }, { status: 500 });
-    }
+    if (!task) return fail('Failed to create task', 500);
 
-    // Log activity
-    await logTaskActivity(task.id, session.userId, 'created', { title });
+    await logTaskActivity(task.id, session.userId, 'created', { title: data.title });
 
-    // Send email in background
+    await createNotification({
+      recipient_id: data.assignedTo,
+      type: 'task_assigned',
+      title: 'Task Assigned',
+      message: `You have been assigned a new task: "${data.title}". Deadline: ${new Date(data.deadline).toLocaleDateString()}`,
+      related_task_id: task.id,
+      is_read: false,
+    });
+
     sendTaskAssignedEmail(
       assignedUser.email,
       assignedUser.name,
-      title,
-      description || '',
-      deadline,
-      priority || 'medium'
+      data.title,
+      data.description,
+      data.deadline,
+      data.priority
     ).catch(console.error);
 
     return NextResponse.json({ success: true, taskId: task.id, message: 'Task created successfully' });
   } catch (error) {
     console.error('Create task error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create task' }, { status: 500 });
+    return fail('Failed to create task', 500);
   }
 }

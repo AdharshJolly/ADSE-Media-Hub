@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { getTaskById, updateTaskStatus, getUserById, logTaskActivity } from '@/lib/db';
+import { getTaskById, updateTaskStatus, logTaskActivity, getRequestById, createNotification } from '@/lib/db';
+import { authenticate, fail, parseBody, STAFF_ROLES } from '@/lib/api';
+import { taskStatusSchema } from '@/lib/validation';
 
 export async function PATCH(
   request: NextRequest,
@@ -8,40 +9,49 @@ export async function PATCH(
 ) {
   try {
     const { id: taskId } = await params;
-    const session = await getSession();
-    
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { session, response } = await authenticate();
+    if (response) return response;
 
-    const body = await request.json();
-    const { status } = body;
-
-    if (!status) {
-      return NextResponse.json({ success: false, error: 'Status is required' }, { status: 400 });
-    }
+    const { data, response: bad } = await parseBody(request, taskStatusSchema);
+    if (bad) return bad;
 
     const task = await getTaskById(taskId);
-    if (!task) {
-      return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
-    }
+    if (!task) return fail('Task not found', 404);
 
-    const currentUser = await getUserById(session.userId);
-    if (currentUser?.role === 'team_member' && task.assigned_to !== session.userId) {
-      return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
-    }
+    // Only staff or the assignee may change status
+    const allowed = STAFF_ROLES.includes(session.role) || task.assigned_to === session.userId;
+    if (!allowed) return fail('Permission denied', 403);
 
-    const success = await updateTaskStatus(taskId, status);
-    if (!success) {
-      return NextResponse.json({ success: false, error: 'Failed to update task' }, { status: 500 });
-    }
+    const success = await updateTaskStatus(taskId, data.status);
+    if (!success) return fail('Failed to update task', 500);
 
-    // Log activity
-    await logTaskActivity(taskId, session.userId, 'status_changed', { from: task.status, to: status });
+    await logTaskActivity(taskId, session.userId, 'status_changed', { from: task.status, to: data.status });
+
+    // Tell the people waiting on the work (creator + original requestor) when it's done
+    if (data.status === 'completed' && task.status !== 'completed') {
+      const recipients = new Set<string>([task.created_by]);
+      if (task.request_id) {
+        const req = await getRequestById(task.request_id);
+        if (req) recipients.add(req.requestor_id);
+      }
+      recipients.delete(session.userId);
+      await Promise.all(
+        [...recipients].map((recipientId) =>
+          createNotification({
+            recipient_id: recipientId,
+            type: 'status_update',
+            title: 'Task completed',
+            message: `"${task.title}" has been marked complete.`,
+            related_task_id: taskId,
+            is_read: false,
+          })
+        )
+      );
+    }
 
     return NextResponse.json({ success: true, message: 'Task status updated' });
   } catch (error) {
     console.error('Update task status error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update task status' }, { status: 500 });
+    return fail('Failed to update task status', 500);
   }
 }
