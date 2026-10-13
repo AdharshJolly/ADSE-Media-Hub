@@ -50,12 +50,24 @@ create table if not exists tasks (
   media_type text default '',
   priority text default 'medium' check (priority in ('low', 'medium', 'high', 'urgent')),
   deadline timestamptz not null,
-  status text default 'pending' check (status in ('pending', 'in_progress', 'completed', 'overdue')),
+  status text default 'pending' check (status in ('pending', 'in_progress', 'in_review', 'completed', 'overdue')),
   completion_date timestamptz,
   notes text default '',
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Everyone working on a task (the lead included); tasks.assigned_to stays as the lead.
+create table if not exists task_assignees (
+  task_id uuid not null references tasks(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  state text not null default 'working' check (state in ('working', 'submitted', 'needs_rework')),
+  submitted_at timestamptz,
+  rework_note text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (task_id, user_id)
+);
+create index if not exists idx_task_assignees_user on task_assignees (user_id);
 
 -- Notifications table
 create table if not exists notifications (
@@ -194,6 +206,7 @@ language sql stable as $$
       'total', count(*),
       'pending', count(*) filter (where status = 'pending'),
       'in_progress', count(*) filter (where status = 'in_progress'),
+      'in_review', count(*) filter (where status = 'in_review'),
       'completed', count(*) filter (where status = 'completed'),
       'overdue', count(*) filter (where status = 'overdue')) from tasks),
     'requestStats', (select json_build_object(
@@ -221,9 +234,12 @@ language sql stable as $$
       count(t.id) as total_tasks,
       count(t.id) filter (where t.status = 'pending') as pending,
       count(t.id) filter (where t.status = 'in_progress') as in_progress,
+      count(t.id) filter (where t.status = 'in_review') as in_review,
       count(t.id) filter (where t.status = 'completed') as completed,
       count(t.id) filter (where t.status = 'overdue') as overdue
-    from users u left join tasks t on t.assigned_to = u.id
+    from users u
+      left join task_assignees ta on ta.user_id = u.id
+      left join tasks t on t.id = ta.task_id
     where u.role = 'team_member' and u.is_active and u.is_approved
     group by u.id
   ) w
@@ -241,6 +257,7 @@ alter table notifications enable row level security;
 alter table task_comments enable row level security;
 alter table task_activity enable row level security;
 alter table task_links enable row level security;
+alter table task_assignees enable row level security;
 alter table auth_rate_limits enable row level security;
 alter table push_subscriptions enable row level security;
 alter table app_settings enable row level security;
