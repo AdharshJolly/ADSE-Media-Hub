@@ -88,6 +88,12 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<bo
   return !error;
 }
 
+export async function deleteUser(id: string): Promise<boolean> {
+  const { error } = await supabase.from('users').delete().eq('id', id);
+  sessionUserCache.delete(id);
+  return !error;
+}
+
 // Applies `updates` and increments token_version (revoking every existing session) as a
 // compare-and-set on the version it read, so concurrent calls can't overwrite each other's
 // bump. Returns the new version, or null if it kept losing the race or the user is gone.

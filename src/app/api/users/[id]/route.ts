@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserById, updateUser } from '@/lib/db';
+import { deleteUser, getUserById, updateUser } from '@/lib/db';
 import { authenticate, fail, parseBody } from '@/lib/api';
 import { updateUserSchema } from '@/lib/validation';
 import { supabase } from '@/lib/supabase';
@@ -51,8 +51,7 @@ export async function DELETE(
       return fail('This person has requests or tasks on record, so deleting them would erase that work. Deactivate them instead.', 409);
     }
 
-    const { error } = await supabase.from('users').delete().eq('id', id);
-    if (error) return fail('Failed to delete user', 500);
+    if (!(await deleteUser(id))) return fail('Failed to delete user', 500);
 
     return NextResponse.json({ success: true });
   } catch (error) {
