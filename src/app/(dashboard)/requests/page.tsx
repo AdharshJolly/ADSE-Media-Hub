@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { safeHttpUrl } from '@/lib/validation';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useAuth } from '@/lib/auth-context';
 import { useDebounce } from '@/hooks/useDebounce';
 import { TableSkeleton } from '@/components/ui/skeleton';
-import { format } from 'date-fns';
-import toast from 'react-hot-toast';
+import { Chip, Empty, Icon, Modal, PageHead, Pri, TypeTag, fmtDate } from '@/components/ui/kit';
 
 interface RequestWithTask {
   id: string;
@@ -26,19 +28,30 @@ interface RequestWithTask {
   tasks: Array<{ id: string; status: string; assigned_to: string; title: string }> | null;
 }
 
-export default function RequestsPage() {
+function RequestsInner() {
   const { canManageTasks, isRequestor } = useAuth();
+  const searchParams = useSearchParams();
+  const highlight = searchParams.get('highlight');
   const [requests, setRequests] = useState<RequestWithTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<RequestWithTask | null>(null);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [viewing, setViewing] = useState<RequestWithTask | null>(null);
 
   const debouncedStatus = useDebounce(statusFilter, 300);
   const debouncedSearch = useDebounce(searchQuery, 300);
+
+  const urlQ = searchParams.get('q') || '';
+  useEffect(() => {
+    setSearchQuery(urlQ);
+    setPage(1);
+  }, [urlQ]);
 
   const fetchRequests = useCallback(async () => {
     try {
@@ -49,7 +62,7 @@ export default function RequestsPage() {
       params.set('page', page.toString());
       params.set('pageSize', '10');
 
-      const response = await fetch(`/api/requests?${params}`);
+      const response = await fetch(`/api/requests?${params}`, { cache: 'no-store' });
       const data = await response.json();
       if (data.success) {
         setRequests(data.data);
@@ -70,10 +83,7 @@ export default function RequestsPage() {
   const handleApprove = async (requestId: string) => {
     setUpdatingId(requestId);
     const originalRequests = [...requests];
-    
-    setRequests(prev => prev.map(r => 
-      r.id === requestId ? { ...r, status: 'approved' } : r
-    ));
+    setRequests((prev) => prev.map((r) => (r.id === requestId ? { ...r, status: 'approved' } : r)));
 
     try {
       const response = await fetch(`/api/requests/${requestId}/approve`, {
@@ -87,7 +97,7 @@ export default function RequestsPage() {
         toast.error(data.error || 'Failed to approve request');
       } else {
         toast.success('Request approved and task created');
-        fetchRequests(); // Refresh to show linked task
+        fetchRequests();
       }
     } catch {
       setRequests(originalRequests);
@@ -97,16 +107,16 @@ export default function RequestsPage() {
     }
   };
 
-  const handleReject = async (requestId: string) => {
-    const notes = prompt('Reason for rejection:');
-    if (notes === null) return;
+  const handleReject = async () => {
+    if (!rejecting) return;
+    const requestId = rejecting.id;
+    const notes = rejectNotes.trim();
+    setRejecting(null);
+    setRejectNotes('');
 
     setUpdatingId(requestId);
     const originalRequests = [...requests];
-    
-    setRequests(prev => prev.map(r => 
-      r.id === requestId ? { ...r, status: 'rejected' } : r
-    ));
+    setRequests((prev) => prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected' } : r)));
 
     try {
       const response = await fetch(`/api/requests/${requestId}/reject`, {
@@ -129,221 +139,211 @@ export default function RequestsPage() {
     }
   };
 
-  const getStatusBadgeStyles = (status: string) => {
-    const styles: Record<string, string> = {
-      pending: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
-      approved: 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20',
-      rejected: 'bg-rose-500/10 text-rose-500 border border-rose-500/20',
-      completed: 'bg-sky-500/10 text-sky-500 border border-sky-500/20',
-    };
-    return styles[status] || 'bg-muted text-muted-foreground border border-border';
-  };
-
-  const getPriorityBadgeStyles = (priority: string) => {
-    const styles: Record<string, string> = {
-      urgent: 'bg-rose-500/10 text-rose-500 border border-rose-500/20',
-      high: 'bg-orange-500/10 text-orange-500 border border-orange-500/20',
-      medium: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
-      low: 'bg-slate-500/10 text-slate-500 border border-slate-500/20',
-    };
-    return styles[priority] || 'bg-muted text-muted-foreground border border-border';
-  };
-
-  const getMediaTypeBadgeStyles = (mediaType: string) => {
-    const styles: Record<string, string> = {
-      graphic_design: 'bg-indigo-500/10 text-indigo-500 border border-indigo-500/20',
-      photography: 'bg-purple-500/10 text-purple-500 border border-purple-500/20',
-      video_production: 'bg-fuchsia-500/10 text-fuchsia-500 border border-fuchsia-500/20',
-    };
-    return styles[mediaType] || 'bg-violet-500/10 text-violet-500 border border-violet-500/20';
-  };
-
-  const getLinkedTaskBadge = (req: RequestWithTask) => {
-    if (!req.tasks || req.tasks.length === 0) return null;
-    const task = req.tasks[0];
-    const statusColors: Record<string, string> = {
-      pending: 'bg-amber-500/10 text-amber-500',
-      in_progress: 'bg-primary/10 text-primary',
-      completed: 'bg-emerald-500/10 text-emerald-500',
-      overdue: 'bg-red-500/10 text-red-500',
-    };
-    return (
-      <Link
-        href={`/tasks?highlight=${task.id}`}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusColors[task.status] || 'bg-muted text-muted-foreground'} hover:opacity-80 transition-opacity`}
-      >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-        </svg>
-        Task: {task.status.replace('_', ' ')}
-      </Link>
-    );
-  };
+  const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  const cols = canManageTasks
+    ? 'minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,.9fr) minmax(0,1.2fr) minmax(0,1fr) 170px'
+    : 'minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,.9fr) minmax(0,1.2fr) minmax(0,1fr) 100px';
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Media Requests</h1>
-          <p className="text-sm text-muted-foreground mt-1">Submit, monitor, and manage your asset requests. ({totalCount} total)</p>
+    <>
+      <PageHead
+        title={isRequestor ? 'My requests' : 'Requests'}
+        sub={
+          isRequestor
+            ? 'Everything you have submitted.'
+            : pendingCount > 0
+              ? `${pendingCount} on this page ${pendingCount === 1 ? 'is' : 'are'} waiting for review.`
+              : `${totalCount} total.`
+        }
+        actions={
+          isRequestor ? (
+            <Link href="/requests/new" className="btn btn-primary">
+              <Icon name="plus" size={16} /> New request
+            </Link>
+          ) : null
+        }
+      />
+
+      <div className="row wrap" style={{ gap: 12 }}>
+        <div className="search grow" style={{ minWidth: 200, maxWidth: 380, width: '100%' }}>
+          <Icon name="search" size={16} />
+          <input
+            type="text"
+            className="input"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+            placeholder="Search requests…"
+            aria-label="Search requests"
+          />
         </div>
-        {isRequestor && (
-          <Link
-            href="/requests/new"
-            className="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors duration-200"
-          >
-            New Request
-          </Link>
-        )}
+        <select
+          className="input sel"
+          style={{ width: 180 }}
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          aria-label="Filter by status"
+        >
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="completed">Completed</option>
+        </select>
       </div>
 
-      {/* Filters Card */}
-      <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="w-full sm:w-64">
-            <label className="block text-xs font-medium text-muted-foreground mb-2">Filter by Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-            >
-              <option value="">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-              <option value="completed">Completed</option>
-            </select>
-          </div>
-          <div className="flex-1 w-full sm:w-auto">
-            <label className="block text-xs font-medium text-muted-foreground mb-2">Search</label>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              placeholder="Search requests..."
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Requests Table */}
       {loading ? (
-        <TableSkeleton rows={5} cols={6} />
+        <TableSkeleton rows={5} />
+      ) : requests.length === 0 ? (
+        <div className="card">
+          <Empty
+            icon="inbox"
+            title="No requests found"
+            text={isRequestor ? 'Try a different filter, or submit a new request.' : 'Try changing the filter or search.'}
+            action={isRequestor ? <Link href="/requests/new" className="btn btn-primary">New request</Link> : undefined}
+          />
+        </div>
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Title / Event</th>
-                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
-                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
-                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Deadline</th>
-                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {requests.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                      <p className="font-medium text-sm">No requests found</p>
-                      <p className="text-xs mt-1">Try changing the filter or create a new request.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  requests.map((req) => {
-                    const isUpdating = updatingId === req.id;
-                    return (
-                      <tr key={req.id} className={`hover:bg-muted/20 transition-colors ${isUpdating ? 'opacity-60' : ''}`}>
-                        <td className="px-5 py-4">
-                          <div className="font-medium text-foreground text-sm line-clamp-1">{req.title}</div>
-                          {req.event_name ? (
-                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-yellow-accent inline-block"></span>
-                              {req.event_name}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground/60 mt-0.5">No event linked</div>
-                          )}
-                          {getLinkedTaskBadge(req)}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getMediaTypeBadgeStyles(req.media_type)}`}>
-                            {req.media_type?.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getPriorityBadgeStyles(req.priority)}`}>
-                            {req.priority}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-sm text-foreground/80 font-medium">
-                          {format(new Date(req.deadline), 'MMM d, yyyy')}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getStatusBadgeStyles(req.status)}`}>
-                            {req.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <div className="inline-flex space-x-2">
-                            {canManageTasks && req.status === 'pending' ? (
-                              <>
-                                <button
-                                  onClick={() => handleApprove(req.id)}
-                                  disabled={isUpdating}
-                                  className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 transition cursor-pointer disabled:opacity-50"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => handleReject(req.id)}
-                                  disabled={isUpdating}
-                                  className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 transition cursor-pointer disabled:opacity-50"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/60">—</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="thead" style={{ gridTemplateColumns: cols }}>
+            <span>Title / Event</span>
+            <span>Type</span>
+            <span>Priority</span>
+            <span>Deadline</span>
+            <span>Status</span>
+            <span>Actions</span>
           </div>
+          {requests.map((req) => {
+            const busy = updatingId === req.id;
+            const task = req.tasks && req.tasks.length > 0 ? req.tasks[0] : null;
+            return (
+              <div
+                key={req.id}
+                className="trow"
+                style={{
+                  gridTemplateColumns: cols,
+                  opacity: busy ? 0.6 : 1,
+                  background: highlight === req.id ? 'var(--primary-soft)' : undefined,
+                }}
+              >
+                <div className="m-full" style={{ minWidth: 0 }}>
+                  <div className="col" style={{ minWidth: 0 }}>
+                    <b className="trunc" style={{ fontWeight: 500 }}>{req.title}</b>
+                    <span className="t-xs muted trunc">{req.event_name || 'No event linked'}</span>
+                    {task ? (
+                      <Link href={`/tasks/${task.id}`} className="lnk t-xs row" style={{ gap: 4 }}>
+                        <Icon name="tasks" size={12} /> Task: {task.status.replace('_', ' ')}
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+                <div><TypeTag type={req.media_type} /></div>
+                <div><Pri level={req.priority} /></div>
+                <div><span className="t-sm">{fmtDate(req.deadline)}</span></div>
+                <div><Chip status={req.status} /></div>
+                <div>
+                  <div className="row" style={{ gap: 8 }}>
+                    {canManageTasks && req.status === 'pending' ? (
+                      <>
+                        <button type="button" className="btn btn-sm btn-ok" disabled={busy} onClick={() => handleApprove(req.id)}>Approve</button>
+                        <button type="button" className="btn btn-sm btn-danger" disabled={busy} onClick={() => setRejecting(req)}>Reject</button>
+                      </>
+                    ) : (
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setViewing(req)}>View</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center space-x-2 py-4 border-t border-border">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Previous
+          {totalPages > 1 ? (
+            <div className="row" style={{ justifyContent: 'center', gap: 12, padding: 14, borderTop: '1px solid var(--line)' }}>
+              <button type="button" className="btn btn-sm" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                <Icon name="left" size={14} /> Previous
               </button>
-              <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
+              <span className="t-sm muted">Page {page} of {totalPages}</span>
+              <button type="button" className="btn btn-sm" disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                Next <Icon name="right" size={14} />
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       )}
-    </div>
+
+      {rejecting ? (
+        <Modal
+          title="Reject request?"
+          onClose={() => { setRejecting(null); setRejectNotes(''); }}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => { setRejecting(null); setRejectNotes(''); }}>Cancel</button>
+              <button type="button" className="btn btn-danger" onClick={handleReject}>Reject</button>
+            </>
+          }
+        >
+          <div className="col" style={{ gap: 10 }}>
+            <p className="muted">“{rejecting.title}” will be marked as rejected. The requestor is notified.</p>
+            <div className="field">
+              <label htmlFor="reject-notes">Reason (optional)</label>
+              <textarea
+                id="reject-notes"
+                className="input"
+                style={{ height: 88 }}
+                value={rejectNotes}
+                onChange={(e) => setRejectNotes(e.target.value)}
+                placeholder="Why is this being rejected?"
+              />
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {viewing ? (
+        <Modal
+          title={viewing.title}
+          onClose={() => setViewing(null)}
+          footer={
+            <>
+              {viewing.tasks && viewing.tasks.length > 0 ? (
+                <Link href={`/tasks/${viewing.tasks[0].id}`} className="btn btn-primary">View task</Link>
+              ) : null}
+              <button type="button" className="btn" onClick={() => setViewing(null)}>Close</button>
+            </>
+          }
+        >
+          <div className="col" style={{ gap: 10 }}>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <Chip status={viewing.status} />
+              <Pri level={viewing.priority} />
+              <TypeTag type={viewing.media_type} />
+            </div>
+            <p style={{ whiteSpace: 'pre-wrap', color: 'var(--ink-2)' }}>{viewing.description}</p>
+            <hr className="hr" />
+            <div className="kv"><span>Deadline</span><span>{fmtDate(viewing.deadline)}</span></div>
+            {viewing.event_name ? <div className="kv"><span>Event</span><span>{viewing.event_name}</span></div> : null}
+            {viewing.target_platform ? <div className="kv"><span>Platform</span><span>{viewing.target_platform}</span></div> : null}
+            {viewing.style_reference ? (
+              <div className="kv">
+                <span>Reference</span>
+                {safeHttpUrl(viewing.style_reference) ? (
+                  <a href={safeHttpUrl(viewing.style_reference)!} target="_blank" rel="noopener noreferrer" className="lnk">Open link</a>
+                ) : (
+                  <span className="trunc">{viewing.style_reference}</span>
+                )}
+              </div>
+            ) : null}
+            {viewing.coordinator_notes ? <div className="kv"><span>Notes</span><span>{viewing.coordinator_notes}</span></div> : null}
+          </div>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+export default function RequestsPage() {
+  return (
+    <Suspense fallback={<TableSkeleton rows={5} />}>
+      <RequestsInner />
+    </Suspense>
   );
 }
