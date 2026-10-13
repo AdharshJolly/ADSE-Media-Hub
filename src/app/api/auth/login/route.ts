@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
       return fail('Account is not active. Contact your coordinator.', 403);
     }
 
-    await setSession(generateToken(user.id, user.token_version ?? 0));
+    const remember = data.remember === true;
+    await setSession(generateToken(user.id, user.token_version ?? 0, remember), remember);
 
     return NextResponse.json({
       success: true,

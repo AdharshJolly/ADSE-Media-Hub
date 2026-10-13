@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const result = await login(email, password);
+    const result = await login(email, password, remember);
     if (result.success) {
       toast.success('Signed in');
       router.push(result.mustChangePassword ? '/change-password' : '/dashboard');
@@ -54,6 +55,10 @@ export default function LoginPage() {
             </button>
           </div>
         </div>
+        <label className="row t-sm" style={{ gap: 8, cursor: 'pointer' }}>
+          <input type="checkbox" className="native" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          Keep me signed in
+        </label>
         <button className="btn btn-primary btn-block" type="submit" disabled={loading} style={{ height: 44 }}>
           {loading ? 'Signing in…' : 'Sign in'}
         </button>

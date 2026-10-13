@@ -93,9 +93,12 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<bo
 const SESSION_USER_TTL_MS = 30_000;
 const sessionUserCache = new Map<string, { user: User; at: number }>();
 
-export async function getSessionUser(id: string): Promise<User | null> {
+// `tokenVersion` is the version in the caller's session token. A cached copy with a different
+// version is stale (another instance changed the password), so it is refetched rather than
+// trusted. Revoked OLD tokens can still pass from a stale cache for up to the TTL.
+export async function getSessionUser(id: string, tokenVersion?: number): Promise<User | null> {
   const hit = sessionUserCache.get(id);
-  if (hit && Date.now() - hit.at < SESSION_USER_TTL_MS) return hit.user;
+  if (hit && Date.now() - hit.at < SESSION_USER_TTL_MS && (tokenVersion === undefined || (hit.user.token_version ?? 0) === tokenVersion)) return hit.user;
 
   const user = await getUserById(id);
   if (user && !user.must_change_password) {

@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     });
     if (!ok) return fail('Failed to update password', 500);
 
-    await setSession(generateToken(user.id, tokenVersion));
+    await setSession(generateToken(user.id, tokenVersion, session.remember), session.remember);
 
     return NextResponse.json({ success: true, message: 'Password updated' });
   } catch (error) {
