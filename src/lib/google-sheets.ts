@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { env } from './env';
 import { getAllUsers, getTasks, getRequests } from './db';
+import { supabase } from './supabase';
 
 // One-way mirror: Supabase is the source of truth, each tab is fully rewritten on every sync.
 // Password hashes and other secrets are never exported.
@@ -75,6 +76,10 @@ export async function syncToSheets(): Promise<SyncResult> {
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
   const who = (id: string | null | undefined) => (id ? nameOf.get(id) ?? id : '');
 
+  const { data: links } = await supabase.from('task_assignees').select('task_id, user_id');
+  const assigneeIds = new Map<string, string[]>();
+  for (const l of links ?? []) assigneeIds.set(l.task_id, [...(assigneeIds.get(l.task_id) ?? []), l.user_id]);
+
   // Sequential: concurrent writes to one spreadsheet can hit Google's per-document write limits.
   await writeTab(sheets, existing, 'Users',
     ['ID', 'Name', 'Email', 'Role', 'Skills', 'Active', 'Created'],
@@ -90,9 +95,9 @@ export async function syncToSheets(): Promise<SyncResult> {
   );
 
   await writeTab(sheets, existing, 'Tasks',
-    ['ID', 'Request ID', 'Title', 'Description', 'Media type', 'Assigned to', 'Created by', 'Priority', 'Status', 'Deadline', 'Completed', 'Notes', 'Created', 'Updated'],
+    ['ID', 'Request ID', 'Title', 'Description', 'Media type', 'Assigned to (lead)', 'All assignees', 'Created by', 'Priority', 'Status', 'Deadline', 'Completed', 'Notes', 'Created', 'Updated'],
     tasks.map((t) => [
-      t.id, t.request_id ?? '', t.title, t.description ?? '', t.media_type ?? '', who(t.assigned_to), who(t.created_by),
+      t.id, t.request_id ?? '', t.title, t.description ?? '', t.media_type ?? '', who(t.assigned_to), (assigneeIds.get(t.id) ?? []).map(who).join(', '), who(t.created_by),
       t.priority, t.status, t.deadline, t.completion_date ?? '', t.notes ?? '', t.created_at, t.updated_at,
     ]),
   );

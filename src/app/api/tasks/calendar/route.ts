@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { authenticate, fail } from '@/lib/api';
+import { getAssignedTaskIds } from '@/lib/db';
 
 export async function GET() {
   try {
@@ -12,7 +13,9 @@ export async function GET() {
       .select('id, title, deadline, status, priority, assigned_to, created_by, request_id');
 
     if (session.role === 'team_member') {
-      query = query.eq('assigned_to', session.userId);
+      const mine = await getAssignedTaskIds(session.userId);
+      if (mine.length === 0) return NextResponse.json({ success: true, tasks: [] });
+      query = query.in('id', mine);
     } else if (session.role === 'requestor') {
       const { data: mine } = await supabase.from('requests').select('id').eq('requestor_id', session.userId);
       const ids = (mine || []).map(r => r.id);

@@ -14,6 +14,8 @@ import type {
   TaskActivity,
   TaskLink,
   TaskStatus,
+  TaskAssignee,
+  AssigneeState,
   RequestStatus,
   PaginatedResponse,
 } from '@/types/database';
@@ -233,7 +235,9 @@ export async function getTasks(filters?: { status?: TaskStatus | 'active'; assig
     }
   }
   if (filters?.assigned_to) {
-    query = query.eq('assigned_to', filters.assigned_to);
+    const ids = await getAssignedTaskIds(filters.assigned_to);
+    if (ids.length === 0) return [];
+    query = query.in('id', ids);
   }
 
   const { data, error } = await query;
@@ -263,7 +267,9 @@ export async function getTasksPaginated(
     }
   }
   if (filters?.assigned_to) {
-    query = query.eq('assigned_to', filters.assigned_to);
+    const ids = await getAssignedTaskIds(filters.assigned_to);
+    if (ids.length === 0) return { data: [], count: 0, page, pageSize, totalPages: 0 };
+    query = query.in('id', ids);
   }
 
   if (filters?.request_ids) {
@@ -278,13 +284,102 @@ export async function getTasksPaginated(
     return { data: [], count: 0, page, pageSize, totalPages: 0 };
   }
 
+  const rows = data as Task[];
+  const byTask = await getAssigneesForTasks(rows.map((t) => t.id));
+  for (const t of rows) t.assignees = byTask.get(t.id) ?? [];
+
   return {
-    data: data as Task[],
+    data: rows,
     count: count || 0,
     page,
     pageSize,
     totalPages: Math.ceil((count || 0) / pageSize),
   };
+}
+
+// ---- Task assignees (everyone working on a task; tasks.assigned_to is the lead) ----
+
+export async function getAssignedTaskIds(userId: string): Promise<string[]> {
+  const { data } = await supabase.from('task_assignees').select('task_id').eq('user_id', userId);
+  return (data ?? []).map((r) => r.task_id as string);
+}
+
+export async function getAssigneesForTasks(taskIds: string[]): Promise<Map<string, TaskAssignee[]>> {
+  const out = new Map<string, TaskAssignee[]>();
+  if (taskIds.length === 0) return out;
+  const [{ data: rows }, { data: leads }] = await Promise.all([
+    supabase
+      .from('task_assignees')
+      .select('task_id, user_id, state, submitted_at, rework_note, created_at, user:users!task_assignees_user_id_fkey(name)')
+      .in('task_id', taskIds)
+      .order('created_at', { ascending: true }),
+    supabase.from('tasks').select('id, assigned_to').in('id', taskIds),
+  ]);
+  const leadOf = new Map((leads ?? []).map((t) => [t.id as string, t.assigned_to as string]));
+  for (const r of rows ?? []) {
+    const u = (Array.isArray(r.user) ? r.user[0] : r.user) as { name: string } | null;
+    const list = out.get(r.task_id) ?? [];
+    list.push({
+      user_id: r.user_id,
+      name: u?.name ?? 'Team member',
+      state: r.state as AssigneeState,
+      submitted_at: r.submitted_at,
+      rework_note: r.rework_note ?? '',
+      is_lead: leadOf.get(r.task_id) === r.user_id,
+    });
+    out.set(r.task_id, list);
+  }
+  // Lead first, then in assignment order
+  for (const list of out.values()) list.sort((a, b) => Number(b.is_lead) - Number(a.is_lead));
+  return out;
+}
+
+export async function getTaskAssignees(taskId: string): Promise<TaskAssignee[]> {
+  return (await getAssigneesForTasks([taskId])).get(taskId) ?? [];
+}
+
+// Replaces the assignee set. The first id becomes the lead. People who stay keep their state.
+export async function setTaskAssignees(taskId: string, userIds: string[]): Promise<boolean> {
+  const ids = [...new Set(userIds)];
+  const { data: existing } = await supabase.from('task_assignees').select('user_id').eq('task_id', taskId);
+  const have = new Set((existing ?? []).map((r) => r.user_id as string));
+  const toAdd = ids.filter((id) => !have.has(id));
+  const toRemove = [...have].filter((id) => !ids.includes(id));
+  if (toAdd.length) {
+    const { error } = await supabase.from('task_assignees').insert(toAdd.map((user_id) => ({ task_id: taskId, user_id })));
+    if (error) return false;
+  }
+  if (toRemove.length) {
+    const { error } = await supabase.from('task_assignees').delete().eq('task_id', taskId).in('user_id', toRemove);
+    if (error) return false;
+  }
+  return updateTask(taskId, { assigned_to: ids[0] });
+}
+
+export async function setAssigneeStates(
+  taskId: string,
+  userIds: string[],
+  state: AssigneeState,
+  reworkNote = ''
+): Promise<boolean> {
+  if (userIds.length === 0) return true;
+  const { error } = await supabase
+    .from('task_assignees')
+    .update({ state, submitted_at: state === 'submitted' ? new Date().toISOString() : null, rework_note: reworkNote })
+    .eq('task_id', taskId)
+    .in('user_id', userIds);
+  return !error;
+}
+
+// Coordinators and student heads: the people who review submitted work.
+export async function getReviewerIds(): Promise<string[]> {
+  const { data } = await supabase
+    .from('users')
+    .select('id')
+    .in('role', ['coordinator', 'student_head'])
+    .eq('is_active', true)
+    .eq('is_approved', true);
+  return (data ?? []).map((u) => u.id as string);
 }
 
 export async function getTaskById(id: string): Promise<Task | null> {

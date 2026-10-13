@@ -36,7 +36,7 @@ export interface Task {
   media_type: 'graphic_design' | 'photography' | 'video_production';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   deadline: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  status: 'pending' | 'in_progress' | 'in_review' | 'completed' | 'overdue';
   completion_date: string;
   notes: string;
   created_at: string;
@@ -59,6 +59,7 @@ export interface DashboardStats {
     total: number;
     pending: number;
     in_progress: number;
+    in_review: number;
     completed: number;
     overdue: number;
   };
@@ -88,6 +89,7 @@ export interface TeamWorkload {
   total_tasks: number;
   pending: number;
   in_progress: number;
+  in_review: number;
   completed: number;
   overdue: number;
 }

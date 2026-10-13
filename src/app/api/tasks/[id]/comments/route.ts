@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTaskComments, createTaskComment, logTaskActivity, createNotification, getUserById } from '@/lib/db';
+import { getTaskComments, createTaskComment, logTaskActivity, createNotification, getUserById, getTaskAssignees } from '@/lib/db';
 import { authenticate, fail, getAccessibleTask, parseBody } from '@/lib/api';
 import { commentSchema } from '@/lib/validation';
 
@@ -44,7 +44,8 @@ export async function POST(
 
     // Tell the other people on the task (assignee + creator), never the author
     const author = await getUserById(session.userId);
-    const recipients = new Set([task.assigned_to, task.created_by].filter((id): id is string => !!id && id !== session.userId));
+    const assignees = await getTaskAssignees(taskId);
+    const recipients = new Set([task.assigned_to, task.created_by, ...assignees.map((a) => a.user_id)].filter((id): id is string => !!id && id !== session.userId));
     await Promise.all(
       [...recipients].map((recipientId) =>
         createNotification({

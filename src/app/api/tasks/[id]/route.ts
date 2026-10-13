@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTaskById } from '@/lib/db';
+import { getTaskById, getTaskAssignees } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { authenticate, fail, getAccessibleTask, STAFF_ROLES } from '@/lib/api';
 
@@ -15,6 +15,7 @@ export async function GET(
     const task = await getAccessibleTask(taskId, session);
     if (!task) return fail('Task not found', 404);
 
+    task.assignees = await getTaskAssignees(taskId);
     return NextResponse.json({ success: true, task });
   } catch (error) {
     console.error('Get task error:', error);

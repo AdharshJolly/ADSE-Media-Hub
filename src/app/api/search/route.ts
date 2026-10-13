@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getRequests } from '@/lib/db';
+import { getRequests, getAssignedTaskIds } from '@/lib/db';
 import { authenticate, fail, STAFF_ROLES } from '@/lib/api';
 import { cleanTerm, requestSearchFilter, taskSearchFilter } from '@/lib/search';
 
@@ -34,7 +34,9 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(LIMIT);
       if (session.role === 'team_member') {
-        query = query.eq('assigned_to', session.userId);
+        const mine = await getAssignedTaskIds(session.userId);
+        if (mine.length === 0) return { items: [], count: 0 };
+        query = query.in('id', mine);
       } else if (session.role === 'requestor') {
         const mine = await getRequests({ requestor_id: session.userId });
         if (mine.length === 0) return { items: [], count: 0 };

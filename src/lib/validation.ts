@@ -42,7 +42,8 @@ export const decisionSchema = z.object({
 
 export const createTaskSchema = z.object({
   requestId: uuid.nullish(),
-  assignedTo: uuid,
+  assignedTo: uuid.optional(),
+  assigneeIds: z.array(uuid).min(1).max(10).optional(),
   title: text(200).min(1),
   description: text(5000).optional().default(''),
   mediaType: z.union([mediaTypeSchema, z.literal('')]).optional().default(''),
@@ -51,10 +52,20 @@ export const createTaskSchema = z.object({
   notes: text(5000).optional().default(''),
 });
 
-export const assignTaskSchema = z.object({ assignedTo: uuid });
+// First id is the lead. `assignedTo` is the single-assignee shorthand.
+export const assignTaskSchema = z.object({
+  assignedTo: uuid.optional(),
+  assigneeIds: z.array(uuid).min(1).max(10).optional(),
+});
+
+export const reviewActionSchema = z.object({
+  action: z.enum(['submit', 'approve', 'rework']),
+  note: text(2000).optional().default(''),
+  userIds: z.array(uuid).max(10).optional(),
+});
 
 export const taskStatusSchema = z.object({
-  status: z.enum(['pending', 'in_progress', 'completed']),
+  status: z.enum(['pending', 'in_progress']),
 });
 
 export const commentSchema = z.object({ content: text(5000).min(1) });

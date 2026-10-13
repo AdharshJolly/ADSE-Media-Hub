@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import type { ZodType } from 'zod';
 import { getSession, type Session } from './auth';
-import { getTaskById, getRequestById } from './db';
+import { getTaskById, getRequestById, getAssignedTaskIds } from './db';
 import { getSettings } from './settings';
 import type { Task, UserRole } from '@/types/database';
 
@@ -73,7 +73,7 @@ export async function getAccessibleTask(taskId: string, session: Session): Promi
   const task = await getTaskById(taskId);
   if (!task) return null;
   if (STAFF_ROLES.includes(session.role)) return task;
-  if (session.role === 'team_member') return task.assigned_to === session.userId ? task : null;
+  if (session.role === 'team_member') return (await getAssignedTaskIds(session.userId)).includes(taskId) ? task : null;
   if (task.request_id) {
     const req = await getRequestById(task.request_id);
     if (req?.requestor_id === session.userId) return task;

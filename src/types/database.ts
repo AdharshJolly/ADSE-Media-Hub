@@ -2,7 +2,17 @@ export type UserRole = 'coordinator' | 'student_head' | 'requestor' | 'team_memb
 export type MediaType = 'graphic_design' | 'photography' | 'video_production';
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'completed';
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'overdue';
+export type TaskStatus = 'pending' | 'in_progress' | 'in_review' | 'completed' | 'overdue';
+export type AssigneeState = 'working' | 'submitted' | 'needs_rework';
+
+export interface TaskAssignee {
+  user_id: string;
+  name: string;
+  state: AssigneeState;
+  submitted_at: string | null;
+  rework_note: string;
+  is_lead: boolean;
+}
 
 export interface User {
   id: string;
@@ -55,6 +65,7 @@ export interface Task {
   updated_at: string;
   // Joined fields
   assignee?: User;
+  assignees?: TaskAssignee[];
   creator?: User;
   request?: Request;
 }
@@ -78,6 +89,7 @@ export interface Workload {
   total_tasks: number;
   pending: number;
   in_progress: number;
+  in_review: number;
   completed: number;
   overdue: number;
 }
@@ -87,6 +99,7 @@ export interface DashboardStats {
     total: number;
     pending: number;
     in_progress: number;
+    in_review: number;
     completed: number;
     overdue: number;
   };
