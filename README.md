@@ -37,6 +37,7 @@ src/app/                  Pages and API routes (App Router)
 src/components/           UI components
 src/lib/                  DB access, auth, email, push, Sheets sync, validation
 supabase/schema.sql       Database schema
+supabase/migrations/      Upgrade scripts for existing databases (run in order)
 supabase/cron.sql         Scheduled jobs (run after first deploy)
 supabase/reset.sql        DESTRUCTIVE: drops all app tables (test data only)
 SETUP.md                  Step-by-step setup
@@ -71,7 +72,7 @@ All routes are under `/api` and need a session cookie unless noted.
 
 | Area | Routes |
 | --- | --- |
-| Auth | `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password`, `POST auth/forgot-password` (public: login, forgot-password) |
+| Auth | `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password`, `POST auth/forgot-password`, `POST auth/reset-password` (public: login, forgot-password, reset-password) |
 | Users | `GET/POST users`, `POST users/:id/deactivate`, `GET users/team-members` |
 | Requests | `GET/POST requests`, `POST requests/:id/approve`, `POST requests/:id/reject` |
 | Tasks | `GET/POST tasks`, `GET/DELETE tasks/:id`, `PATCH tasks/:id/status`, `POST tasks/:id/assign`, `GET tasks/calendar` |
@@ -81,6 +82,16 @@ All routes are under `/api` and need a session cookie unless noted.
 | Search | `GET search?q=` (tasks and people) |
 | Admin | `GET/POST admin/settings`, `GET admin/stats`, `POST/GET sync` |
 | Cron | `POST cron/reminders` (requires `x-cron-secret` header, called by `pg_cron`) |
+
+## Password reset and sessions
+
+- **Forgot password** emails a one-time link (valid 30 minutes, only a hash of the token is stored). The password does not change until the link is used.
+- Changing or resetting a password signs out every other session (a `token_version` is carried in the session token and checked on each request). Other server instances may take up to 30 seconds to notice because users are cached briefly.
+- Rate limits: reset requests are capped per email and per IP; current-password attempts on change-password are capped per user.
+
+## Upgrading an existing database
+
+Run the scripts in `supabase/migrations/` in the Supabase SQL editor **before** deploying the matching release. v0.1.1 needs `0.1.1-reset-tokens-and-session-version.sql`.
 
 ## Reminders
 
